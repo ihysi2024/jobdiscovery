@@ -25,12 +25,12 @@ jobs:
           code=$(get "job_listings?select=id,company_name,title,industry,role_family,salary_min_annual&limit=3")
           echo "job_listings -> HTTP $code, total $(grep -i content-range /tmp/headers | tr -d '\r')"
           head -c 1200 /tmp/body; echo
-          [ "$code" = 200 ] || { echo "::error::the web app can't read job_listings"; exit 1; }
+          [[ "$code" =~ ^20[06]$ ]] || { echo "::error::the web app can't read job_listings"; exit 1; }
           fail=0
           for t in postings boards runs job_features schema_meta; do
             code=$(get "$t?select=*&limit=1")
             rows=$(head -c 2 /tmp/body)
             echo "$t -> HTTP $code $(head -c 160 /tmp/body)"
-            if [ "$code" = 200 ] && [ "$rows" != "[]" ]; then echo "::error::$t is readable with the public key"; fail=1; fi
+            if [[ "$code" =~ ^20[06]$ ]] && [ "$rows" != "[]" ]; then echo "::error::$t is readable with the public key"; fail=1; fi
           done
           exit $fail
