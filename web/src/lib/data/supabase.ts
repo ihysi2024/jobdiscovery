@@ -32,8 +32,12 @@ const LEVEL: Record<string, string> = {
 };
 const MODE: Record<WorkMode, string> = { onsite: "Onsite", hybrid: "Hybrid", remote: "Remote" };
 
-const initials = (name: string) =>
-  name.split(/[\s\-_.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
+function initials(name: string) {
+  const words = name.split(/[\s\-_.]+/).filter((w) => /[A-Za-z0-9]/.test(w));
+  if (!words.length) return "?";
+  if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
+  return (words[0]![0]! + words[1]![0]!).toUpperCase();
+}
 const parse = <T,>(s: string | null | undefined): T | null => {
   if (!s) return null;
   try { return JSON.parse(s) as T; } catch { return null; }
