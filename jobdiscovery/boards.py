@@ -72,7 +72,25 @@ def board_from_url(url: str) -> Board | None:
         tenant = m.group("tenant").lower()
         return Board("workday", f"{tenant}|{m.group('wd').lower()}|{site}")
 
+    # Oracle Recruiting Cloud: {tenant}.fa[.region].oraclecloud.com/hcmUI/CandidateExperience/[lang/]sites/{site}/...
+    if host.endswith(".oraclecloud.com"):
+        m = _ORACLE_SITE.search(path)
+        if m and _TOKEN_OK.match(m.group(1)):
+            return Board("oracle", f"{host}|{m.group(1)}")
+        return None
+
+    # One-employer careers sites with their own public search endpoints.
+    if host in {"amazon.jobs", "www.amazon.jobs"}:
+        return Board("amazon", "amazon")
+    if host in {"careers.bankofamerica.com"}:
+        return Board("bofa", "bofa")
+    if host in {"cityjobs.nyc.gov", "a127-jobs.nyc.gov"} or (host == "data.cityofnewyork.us" and "kpav-sd4t" in path):
+        return Board("nycjobs", "nyc")
+
     return None
+
+
+_ORACLE_SITE = re.compile(r"/hcmUI/CandidateExperience/(?:[a-z]{2}(?:-[A-Za-z]{2,4})?/)?sites/([A-Za-z0-9_]+)", re.I)
 
 
 def _make(ats: str, token: str, region: str = "") -> Board | None:

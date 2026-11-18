@@ -6,7 +6,11 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-ATS_NAMES = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday")
+ATS_NAMES = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday", "oracle", "amazon", "nycjobs", "bofa")
+
+# Sources that are one employer's own careers site rather than a hiring system
+# many employers share. Their board name is the employer.
+SINGLE_EMPLOYER = {"amazon": "Amazon", "nycjobs": "City of New York", "bofa": "Bank of America"}
 
 
 @dataclass(frozen=True)

@@ -44,6 +44,7 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern("smartrecruiters", "jobs.smartrecruiters.com/*"),
     Pattern("smartrecruiters", "careers.smartrecruiters.com/*"),
     Pattern("workday", "myworkdayjobs.com", match_type="domain"),
+    Pattern("oracle", "oraclecloud.com", match_type="domain"),  # filtered to /hcmUI/CandidateExperience/ sites
 )
 
 

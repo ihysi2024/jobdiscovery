@@ -25,10 +25,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from .alerts import alert
-from .boards import boards_from_urls
+from .boards import board_from_url, boards_from_urls
 from .cc_index import discover_boards
 from .http import PoliteClient
-from .models import ATS_NAMES
+from .models import ATS_NAMES, SINGLE_EMPLOYER
 from .pollers import BoardGone, PollError, poll_board
 from .store import LockHeld, Store, now_utc
 
@@ -130,10 +130,24 @@ async def cmd_discover(args, store: Store) -> int:
 
 async def cmd_add(args, store: Store) -> int:
     urls = list(args.urls)
+    names: dict[str, str] = {}
     if args.file:
-        urls += [line.strip() for line in Path(args.file).read_text().splitlines() if line.strip()]
+        # One link per line, optionally "link | Employer name". Blank lines and # comments are skipped.
+        for line in Path(args.file).read_text().splitlines():
+            line = line.split("#", 1)[0].strip() if line.lstrip().startswith("#") else line.strip()
+            if not line:
+                continue
+            url, _, name = line.partition(" | ")
+            urls.append(url.strip())
+            b = board_from_url(url.strip())
+            if b and name.strip():
+                names[b.key] = name.strip()
     boards = boards_from_urls(urls)
+    for b in boards:
+        if b.ats in SINGLE_EMPLOYER:
+            names.setdefault(b.key, SINGLE_EMPLOYER[b.ats])
     added = store.add_boards(boards, args.source)
+    store.set_company_names(names)
     skipped = len(urls) - len(boards)
     print(f"Recognized {len(boards)} boards from {len(urls)} links ({added} new). "
           + (f"{skipped} links weren't on a supported hiring system." if skipped > 0 else ""))

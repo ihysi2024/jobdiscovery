@@ -59,6 +59,30 @@ jobs:
           from names left join job_listings j on j.company_name ilike '%' || n || '%'
           group by n order by 2, 1"
 
+      - name: Which of those employers have a board, and how it's doing (counts only)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          psql "$DATABASE_URL" -c "
+          select ats, split_part(token, '|', 1) as tenant, split_part(token, '|', 3) as site, last_status,
+                 left(coalesce(last_error, ''), 60) as error, open_jobs, nyc_jobs
+          from boards
+          where token ~* '(jpm|chase|goldman|morgan|citi|bankofamerica|bny|wellsfargo|wf\\||blackrock|amex|aexp|metlife|deloitte|pwc|kpmg|accenture|ibm|google|amazon|microsoft|apple|verizon|pfizer|bms|bristol|nyu|sinai|nyp|northwell|mskcc|columbia|macys|bloomberg|paramount|nbcu|comcast|disney|warner|hearst|conde|nytimes|ralph|elc|estee|loreal|marriott|hilton|coned|mta|twosigma|citadel|point72|capitalone|mastercard|moody|spgi|nasdaq|salesforce|cvs|walgreens|target|starbucks|jetblue)'
+          order by nyc_jobs desc nulls last limit 120"
+          psql "$DATABASE_URL" -c "select ats, last_status, count(*) boards, sum(open_jobs) open_jobs, sum(nyc_jobs) nyc_jobs from boards group by 1, 2 order by 1, 2"
+
+  seeds:
+    if: inputs.sample == ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -q .
+      - name: Poll each seed board once (no database)
+        run: python scripts/check_seeds.py seeds/big_employers.txt
+
   probe:
     if: inputs.sample == ''
     runs-on: ubuntu-latest

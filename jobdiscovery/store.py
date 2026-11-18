@@ -314,6 +314,13 @@ class Store:
                 "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING", rows)
         return self.db.scalar("SELECT COUNT(*) FROM boards") - before
 
+    def set_company_names(self, names: dict[str, str]) -> None:
+        """Name boards whose employer is known up front (a careers site, or a seed list)."""
+        if names:
+            with self.db.tx():
+                self.db.executemany("UPDATE boards SET company_name = ? WHERE key = ? AND company_name IS NULL",
+                                    [(n, k) for k, n in names.items()])
+
     def due_boards(self, *, when: datetime | None = None, limit: int | None = None,
                    ats: set[str] | None = None, include_not_due: bool = False) -> list[Board]:
         when = when or now_utc()
