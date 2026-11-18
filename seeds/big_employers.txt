@@ -10,44 +10,6 @@ https://cityjobs.nyc.gov/ | City of New York
 # Oracle Recruiting Cloud
 https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/ | JPMorgan Chase
 
-# Workday
-https://citi.wd5.myworkdayjobs.com/2 | Citi
-https://ms.wd5.myworkdayjobs.com/External | Morgan Stanley
-https://blackrock.wd1.myworkdayjobs.com/BlackRock_Professional | BlackRock
-https://wf.wd1.myworkdayjobs.com/WellsFargoJobs | Wells Fargo
-https://bnymellon.wd1.myworkdayjobs.com/BNY_Careers | BNY
-https://aig.wd1.myworkdayjobs.com/aig | AIG
-https://metlife.wd1.myworkdayjobs.com/External | MetLife
-https://mastercard.wd1.myworkdayjobs.com/CorporateCareers | Mastercard
-https://capitalone.wd12.myworkdayjobs.com/Capital_One | Capital One
-https://spgi.wd5.myworkdayjobs.com/SPGI_Careers | S&P Global
-https://moodys.wd5.myworkdayjobs.com/Moodys | Moody's
-https://nasdaq.wd1.myworkdayjobs.com/Global_External_Site | Nasdaq
-https://pwc.wd3.myworkdayjobs.com/Global_Experienced_Careers | PwC
-https://kpmg.wd1.myworkdayjobs.com/KPMG_Careers | KPMG
-https://accenture.wd103.myworkdayjobs.com/AccentureCareers | Accenture
-https://salesforce.wd12.myworkdayjobs.com/External_Career_Site | Salesforce
-https://pfizer.wd1.myworkdayjobs.com/PfizerCareers | Pfizer
-https://bristolmyerssquibb.wd5.myworkdayjobs.com/BMS | Bristol Myers Squibb
-https://disney.wd5.myworkdayjobs.com/disneycareer | Disney
-https://paramount.wd5.myworkdayjobs.com/careers | Paramount
-https://warnerbros.wd5.myworkdayjobs.com/global | Warner Bros. Discovery
-https://hearst.wd5.myworkdayjobs.com/Hearst_Careers | Hearst
-https://comcast.wd5.myworkdayjobs.com/Comcast_Careers | Comcast / NBCUniversal
-https://verizon.wd12.myworkdayjobs.com/verizon-careers | Verizon
-https://mountsinai.wd5.myworkdayjobs.com/Mount_Sinai | Mount Sinai
-https://nyulangone.wd5.myworkdayjobs.com/nyulangone | NYU Langone
-https://mskcc.wd1.myworkdayjobs.com/MSKCC | Memorial Sloan Kettering
-https://northwell.wd5.myworkdayjobs.com/External | Northwell Health
-https://nyp.wd1.myworkdayjobs.com/nypcareers | NewYork-Presbyterian
-https://columbia.wd1.myworkdayjobs.com/Columbia_University_Careers | Columbia University
-https://cvshealth.wd1.myworkdayjobs.com/CVS_Health_Careers | CVS Health
-https://walgreens.wd5.myworkdayjobs.com/External | Walgreens
-https://target.wd5.myworkdayjobs.com/targetcareers | Target
-https://jetblue.wd5.myworkdayjobs.com/JetBlue | JetBlue
-https://ralphlauren.wd5.myworkdayjobs.com/RalphLauren | Ralph Lauren
-https://elcompanies.wd1.myworkdayjobs.com/External | Estée Lauder Companies
-https://loreal.wd3.myworkdayjobs.com/Loreal_Careers | L'Oréal
-https://conedison.wd1.myworkdayjobs.com/External | Con Edison
-https://twosigma.wd5.myworkdayjobs.com/External | Two Sigma
-https://point72.wd5.myworkdayjobs.com/Point72 | Point72
+# Workday employers (Pfizer, NewYork-Presbyterian, MSK, Mastercard, BlackRock,
+# CVS, Comcast and others) are already found by Common Crawl discovery, so
+# they aren't listed here.

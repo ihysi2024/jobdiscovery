@@ -45,10 +45,10 @@ API_HOST_LIMITS = {
     "index.commoncrawl.org": 1,
     # Workday gives every employer its own host but rate-limits by caller, so
     # all Workday sites share one limit.
-    ".myworkdayjobs.com": 4,
+    ".myworkdayjobs.com": 2,
 }
 # Seconds between request starts, per host or group.
-API_MIN_INTERVAL = {".myworkdayjobs.com": 0.25}
+API_MIN_INTERVAL = {".myworkdayjobs.com": 1.0}
 
 # Tests swap in an httpx.MockTransport here, and fakes for the classifier/embedder.
 TRANSPORT = None
