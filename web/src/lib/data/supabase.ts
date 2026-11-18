@@ -116,6 +116,9 @@ export const supabaseSource: DataSource = {
     const { data, error } = await db()
       .from("job_listings")
       .select(LIST_COLS)
+      // Only labeled jobs: until a job is labeled it has no company name, pay,
+      // role or industry. New jobs are labeled within a day of being found.
+      .not("processed_at", "is", null)
       .order("first_seen_at", { ascending: false })
       .limit(q?.limit ?? 1000);
     if (error) throw new Error("Couldn't load jobs: " + error.message);
