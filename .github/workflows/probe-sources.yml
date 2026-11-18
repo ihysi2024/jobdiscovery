@@ -6,9 +6,38 @@ name: Probe job sources
 
 on:
   workflow_dispatch:
+    inputs:
+      sample:
+        description: "Optional: print the start of one public job-source response (space-separated URLs)"
+        required: false
+        default: ""
 
 jobs:
+  sample:
+    if: inputs.sample != ''
+    runs-on: ubuntu-latest
+    env:
+      URLS: ${{ inputs.sample }}
+    steps:
+      - shell: bash {0}
+        run: |
+          for u in $URLS; do
+            [[ "$u" =~ ^https:// ]] || continue
+            echo "=== $u"
+            curl -s -m 30 -A "jobdiscovery-probe" "$u" | python3 -c '
+          import sys, json, re
+          s = sys.stdin.read()
+          try:
+              print(json.dumps(json.loads(s), indent=1)[:6000])
+          except Exception:
+              for m in re.findall(r"<script[^>]*>(.{0,40}?)", s)[:0]: pass
+              print(len(s), "chars; first jsonish blob:")
+              i = max(s.find("window.__"), s.find("AF_initDataCallback"), s.find("<loc>"))
+              print(s[i:i+3000] if i >= 0 else s[:1500])'
+          done
+
   coverage:
+    if: inputs.sample == ''
     runs-on: ubuntu-latest
     steps:
       - name: Open NYC jobs per large employer (counts only)
@@ -31,6 +60,7 @@ jobs:
           group by n order by 2, 1"
 
   probe:
+    if: inputs.sample == ''
     runs-on: ubuntu-latest
     defaults:
       run:
