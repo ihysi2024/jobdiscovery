@@ -1,0 +1,83 @@
+name: Probe job sources
+
+# Manual check of how many open NYC jobs big employers have on the board, and
+# whether candidate free job sources answer. Prints counts and HTTP statuses
+# only; the repo is public, so nothing personal is printed.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open NYC jobs per large employer (counts only)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          psql "$DATABASE_URL" -c "
+          with names(n) as (values
+            ('jpmorgan'),('chase'),('goldman'),('morgan stanley'),('citi'),('bank of america'),('bny'),('wells fargo'),
+            ('blackrock'),('american express'),('metlife'),('aig'),('deloitte'),('pwc'),('ernst'),('kpmg'),('accenture'),
+            ('mckinsey'),('ibm'),('google'),('amazon'),('meta'),('microsoft'),('apple'),('verizon'),('pfizer'),
+            ('bristol'),('nyu'),('mount sinai'),('presbyterian'),('northwell'),('memorial sloan'),('columbia'),
+            ('macy'),('bloomberg'),('paramount'),('nbcuniversal'),('disney'),('warner'),('hearst'),('conde nast'),
+            ('new york times'),('spotify'),('etsy'),('datadog'),('mongodb'),('ralph lauren'),('estee lauder'),('l''oreal'),
+            ('marriott'),('hilton'),('con edison'),('mta'),('city of new york'),('two sigma'),('citadel'),('jane street'),
+            ('point72'),('capital one'),('mastercard'),('moody'),('s&p global'),('nasdaq'),('salesforce'),('oracle'),('uber'),
+            ('cvs'),('walgreens'),('target'),('starbucks'),('jetblue'),('ups'),('fedex'))
+          select n as employer, count(j.*) as open_nyc_jobs
+          from names left join job_listings j on j.company_name ilike '%' || n || '%'
+          group by n order by 2, 1"
+
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Candidate sources (status and a count)
+        run: |
+          UA="jobdiscovery-probe (+https://github.com/irahysi/jobdiscovery)"
+          p() { # name, url, [extra curl args...]
+            local name=$1 url=$2; shift 2
+            local out code
+            out=$(curl -s -m 25 -A "$UA" -w '\n%{http_code}' "$@" "$url")
+            code=${out##*$'\n'}; body=${out%$'\n'*}
+            printf '%-34s %s  %s bytes  %s\n' "$name" "$code" "${#body}" "$(printf '%s' "$body" | python3 -c '
+          import sys, json
+          s = sys.stdin.read()
+          try:
+              d = json.loads(s)
+          except Exception:
+              print("html:", s.count("JobPosting"), "JobPosting,", s.count("<loc>"), "<loc>"); sys.exit()
+          def find(d, depth=0):
+              if depth > 3: return None
+              if isinstance(d, dict):
+                  for k in ("totalCount","TotalJobsCount","hits","count","total","total_count","totalJobs","positions","jobs","items","requisitionList","searchResults"):
+                      if k in d:
+                          v = d[k]; return f"{k}={len(v) if isinstance(v, list) else v}"
+                  for v in d.values():
+                      r = find(v, depth+1)
+                      if r: return r
+              if isinstance(d, list): return f"list={len(d)}"
+          print(find(d) or list(d)[:6] if isinstance(d, dict) else find(d))' 2>&1 | head -c 160)"
+          }
+          p "NYC Jobs open data"       "https://data.cityofnewyork.us/resource/kpav-sd4t.json?\$select=count(*)"
+          p "Amazon search.json"       "https://www.amazon.jobs/en/search.json?loc_query=New%20York%2C%20NY&result_limit=10"
+          p "Microsoft (eightfold)"    "https://apply.careers.microsoft.com/api/apply/v2/jobs?domain=microsoft.com&start=0&num=10&location=New%20York"
+          p "Microsoft (gcs old)"      "https://gcsservices.careers.microsoft.com/search/api/v1/search?lc=New%20York&pg=1&pgSz=10"
+          p "Morgan Stanley eightfold" "https://morganstanley.eightfold.ai/api/apply/v2/jobs?domain=morganstanley.com&start=0&num=10&location=New%20York"
+          p "AmEx eightfold"           "https://aexp.eightfold.ai/api/apply/v2/jobs?domain=aexp.com&start=0&num=10&location=New%20York"
+          p "JPMC oracle"              "https://jpmc.fa.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList&finder=findReqs;siteNumber=CX_1001,limit=5,keyword=%22New%20York%22"
+          p "Apple role search"        "https://jobs.apple.com/api/role/search" -X POST -H 'content-type: application/json' --data '{"query":"","filters":{"postingpostLocation":["postLocation-NYC"]},"page":1,"locale":"en-us","sort":""}'
+          p "Apple search html"        "https://jobs.apple.com/en-us/search?location=new-york-city-NYC"
+          p "Google careers html"      "https://www.google.com/about/careers/applications/jobs/results?location=New%20York%2C%20NY%2C%20USA"
+          p "Google sitemap"           "https://www.google.com/about/careers/applications/sitemap.xml"
+          p "Goldman higher.gs.com"    "https://higher.gs.com/results?LOCATION=New%20York"
+          p "Meta careers"             "https://www.metacareers.com/jobs?offices[0]=New%20York%2C%20NY"
+          p "BofA jobs servlet"        "https://careers.bankofamerica.com/services/jobssearchservlet?start=0&rows=10&search=getAllJobs&city=New%20York"
+          p "Citi sitemap"             "https://jobs.citi.com/sitemap.xml"
+          p "USAJobs (needs key)"      "https://data.usajobs.gov/api/search?LocationName=New%20York%2C%20New%20York&ResultsPerPage=1"
+          p "NY State jobs"            "https://statejobs.ny.gov/public/vacancyTable.cfm"
+          p "Common Crawl oracle CE"   "https://index.commoncrawl.org/CC-MAIN-2025-38-index?url=*.oraclecloud.com/hcmUI/CandidateExperience/*&output=json&showNumPages=true"
+          p "Common Crawl eightfold"   "https://index.commoncrawl.org/CC-MAIN-2025-38-index?url=*.eightfold.ai/careers*&output=json&showNumPages=true"
+          p "Common Crawl icims"       "https://index.commoncrawl.org/CC-MAIN-2025-38-index?url=*.icims.com/jobs/*&output=json&showNumPages=true"
+          p "Common Crawl successfact" "https://index.commoncrawl.org/CC-MAIN-2025-38-index?url=*.successfactors.com/career*&output=json&showNumPages=true"
