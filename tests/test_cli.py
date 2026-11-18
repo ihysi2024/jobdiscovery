@@ -125,3 +125,39 @@ def test_failed_run_alerts_and_records(tmp_path, monkeypatch, capsys):
     assert sent and "discover failed" in sent[0]
     s = Store(db)
     assert s.recent_runs("discover")[0]["status"] == "failed"
+
+
+def _flaky_transport(fail_patterns):
+    import httpx
+    from fake_ats import handler
+
+    def h(request):
+        q = request.url.params
+        if request.url.host == "index.commoncrawl.org" and q.get("url") in fail_patterns and not q.get("showNumPages"):
+            return httpx.Response(504, text="Gateway Time-out")
+        return handler(request)
+    return httpx.MockTransport(h)
+
+
+def test_discover_skips_a_failing_index_page(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "TRANSPORT", _flaky_transport({"jobs.ashbyhq.com/*"}))
+    db = str(tmp_path / "jobs.sqlite")
+    assert cli.main(["--db", db, "discover", "--crawls", "1"]) == 0
+    out = capsys.readouterr()
+    assert "Found 4 boards" in out.out          # everything except the Ashby board
+    assert "Index pages: 3 ok, 1 skipped" in out.out
+    assert "FAILED, skipped" in out.err
+
+
+def test_discover_fails_loudly_when_most_pages_fail(tmp_path, monkeypatch, capsys):
+    from jobdiscovery.store import Store
+    sent = []
+    monkeypatch.setattr(cli, "alert", lambda m: sent.append(m))
+    monkeypatch.setattr(cli, "TRANSPORT", _flaky_transport({"jobs.lever.co/*", "jobs.ashbyhq.com/*", "myworkdayjobs.com"}))
+    db = str(tmp_path / "jobs.sqlite")
+    with pytest.raises(RuntimeError, match="3 of 4 index pages failed"):
+        cli.main(["--db", db, "discover", "--crawls", "1"])
+    assert sent and "index may be down" in sent[0]
+    s = Store(db)
+    assert s.summary()["boards"] == 2       # greenhouse boards found before the failures are kept
+    assert s.recent_runs("discover")[0]["status"] == "failed"

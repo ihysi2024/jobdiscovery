@@ -82,8 +82,9 @@ async def _locked(store: Store, command: str, body):
 # --------------------------------------------------------------------------- commands
 
 async def cmd_discover(args, store: Store) -> int:
-    def progress(crawl, pattern, page, pages, new, total):
-        print(f"  {crawl} {pattern}: page {page}/{pages}  +{new}  ({total} boards so far)", file=sys.stderr)
+    def progress(crawl, pattern, page, pages, new, total, failed=False):
+        note = "FAILED, skipped" if failed else f"+{new}"
+        print(f"  {crawl} {pattern}: page {page}/{pages}  {note}  ({total} boards so far)", file=sys.stderr)
 
     async def body(run_id):
         added = 0
@@ -93,17 +94,25 @@ async def cmd_discover(args, store: Store) -> int:
             added += store.add_boards(boards, "commoncrawl")
             store.heartbeat(run_id)
 
-        async with PoliteClient(per_host=1, host_limits=API_HOST_LIMITS, base_delay=3.0, max_retries=6,
-                                transport=TRANSPORT) as client:
-            boards = await discover_boards(client, crawls=args.crawls, ats=args.ats, max_pages=args.max_pages,
+        # The index server is slow under load: long timeout, patient retries.
+        async with PoliteClient(per_host=1, host_limits=API_HOST_LIMITS, base_delay=5.0, max_retries=5,
+                                timeout=120.0, transport=TRANSPORT) as client:
+            result = await discover_boards(client, crawls=args.crawls, ats=args.ats, max_pages=args.max_pages,
                                            on_progress=progress, on_page=save,
                                            deadline=_deadline(args.max_minutes))
+        boards = result.boards
         counts: dict[str, int] = {}
         for b in boards:
             counts[b.ats] = counts.get(b.ats, 0) + 1
         print(f"Found {len(boards)} boards ({', '.join(f'{k} {v}' for k, v in sorted(counts.items()))}); "
-              f"{added} new to the database.")
-        return {"found": len(boards), "added": added, "by_ats": counts}
+              f"{added} new to the database. Index pages: {result.pages_ok} ok, {len(result.pages_failed)} skipped.")
+        stats = {"found": len(boards), "added": added, "by_ats": counts, "pages_ok": result.pages_ok,
+                 "pages_failed": result.pages_failed, "stopped_early": result.stopped_early}
+        # A few skipped pages are normal; if most failed, the index is down and a human should know.
+        if result.pages_total and len(result.pages_failed) > result.pages_total / 2:
+            raise RuntimeError(f"{len(result.pages_failed)} of {result.pages_total} index pages failed; "
+                               f"Common Crawl's index may be down. {added} new boards were still saved.")
+        return stats
 
     return await _locked(store, "discover", body)
 

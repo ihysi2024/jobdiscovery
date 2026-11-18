@@ -14,7 +14,9 @@ from __future__ import annotations
 import json
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+import httpx
 
 from .boards import board_from_url
 from .http import PoliteClient
@@ -90,31 +92,65 @@ async def _page_urls(client: PoliteClient, api: str, pattern: Pattern, page: int
     return urls
 
 
+@dataclass
+class DiscoveryResult:
+    boards: set[Board] = field(default_factory=set)
+    pages_ok: int = 0
+    pages_failed: list[str] = field(default_factory=list)  # "crawl pattern page" that kept failing
+    stopped_early: bool = False
+
+    @property
+    def pages_total(self) -> int:
+        return self.pages_ok + len(self.pages_failed)
+
+
+_INDEX_ERRORS = (httpx.HTTPStatusError, httpx.TransportError, httpx.TimeoutException, ValueError)
+
+
 async def discover_boards(client: PoliteClient, *, crawls: int = 2, ats: set[str] | None = None,
                           max_pages: int | None = None, on_progress=None, on_page=None,
-                          deadline: float | None = None) -> set[Board]:
-    """Return every board found for the chosen hiring systems across the latest crawls.
+                          deadline: float | None = None) -> DiscoveryResult:
+    """Find every board for the chosen hiring systems across the latest crawls.
+
+    The Common Crawl index server often times out. A page that still fails
+    after the client's retries is recorded in ``pages_failed`` and skipped, so
+    one bad page never throws away a whole run; the next run will try again.
 
     ``on_page(boards)`` is called after each index page so callers can save as
-    they go. ``deadline`` (a ``time.monotonic()`` value) stops the search early
-    and returns what was found so far.
+    they go. ``deadline`` (a ``time.monotonic()`` value) stops the search early.
     """
-    found: set[Board] = set()
+    result = DiscoveryResult()
+    found = result.boards
     for crawl in await latest_crawls(client, crawls):
         api = crawl["cdx-api"]
         for pattern in PATTERNS:
             if ats and pattern.ats not in ats:
                 continue
-            pages = await _num_pages(client, api, pattern)
+            try:
+                pages = await _num_pages(client, api, pattern)
+            except _INDEX_ERRORS as e:
+                log.warning("%s %s: couldn't get page count (%s); skipping", crawl["id"], pattern.url, e)
+                result.pages_failed.append(f"{crawl['id']} {pattern.url} count")
+                continue
             if max_pages is not None:
                 pages = min(pages, max_pages)
             log.info("%s %s: %d index pages", crawl["id"], pattern.url, pages)
             for page in range(pages):
                 if deadline is not None and time.monotonic() >= deadline:
                     log.warning("time budget reached; stopping discovery early")
-                    return found
+                    result.stopped_early = True
+                    return result
+                try:
+                    urls = await _page_urls(client, api, pattern, page)
+                except _INDEX_ERRORS as e:
+                    log.warning("%s %s page %d failed after retries (%s); skipping", crawl["id"], pattern.url, page, e)
+                    result.pages_failed.append(f"{crawl['id']} {pattern.url} {page}")
+                    if on_progress:
+                        on_progress(crawl["id"], pattern.url, page + 1, pages, 0, len(found), failed=True)
+                    continue
+                result.pages_ok += 1
                 page_boards = set()
-                for url in await _page_urls(client, api, pattern, page):
+                for url in urls:
                     b = board_from_url(url)
                     if b and b.ats == pattern.ats:
                         page_boards.add(b)
@@ -124,4 +160,4 @@ async def discover_boards(client: PoliteClient, *, crawls: int = 2, ats: set[str
                     on_page(new)
                 if on_progress:
                     on_progress(crawl["id"], pattern.url, page + 1, pages, len(new), len(found))
-    return found
+    return result
