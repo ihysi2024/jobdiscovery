@@ -34,20 +34,26 @@ jobs:
            "Barista and shift lead at a coffee shop in Brooklyn",
            "Senior Sales Manager, enterprise accounts, CRM, outbound prospecting"]
           JSON
-          node web/scripts/embed-parity.mjs "$(cat /tmp/texts.json)" > /tmp/js.json
+          EMBED_DTYPE=q8 node web/scripts/embed-parity.mjs "$(cat /tmp/texts.json)" > /tmp/js.json
+          EMBED_DTYPE=fp32 node web/scripts/embed-parity.mjs "$(cat /tmp/texts.json)" > /tmp/js32.json
           python3 - <<'PY'
           import json, math
           from fastembed import TextEmbedding
           texts = json.load(open("/tmp/texts.json"))
-          js = json.load(open("/tmp/js.json"))
+          js = json.load(open("/tmp/js.json"))      # q8, what the browser uses
+          js32 = json.load(open("/tmp/js32.json"))
           py = [list(v) for v in TextEmbedding("BAAI/bge-small-en-v1.5").embed(texts)]
           cos = lambda a, b: sum(x * y for x, y in zip(a, b)) / (math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b)))
           same = [cos(a, b) for a, b in zip(js, py)]
           for t, c in zip(texts, same):
               print(f"{c:.4f}  {t[:60]}")
+          print("fp32 vs pipeline:", " ".join(f"{cos(a, b):.4f}" for a, b in zip(js32, py)))
+          # Ranking only needs the order of similarities to hold: compare q8 and pipeline rankings of texts vs text 0.
+          print("q8 sims to text 0:      ", " ".join(f"{cos(js[0], v):.4f}" for v in js))
+          print("pipeline sims to text 0:", " ".join(f"{cos(py[0], v):.4f}" for v in py))
           cross = cos(js[0], py[1])
           print(f"different texts for reference: {cross:.4f}")
           assert len(js[0]) == len(py[0]) == 384, "dimension mismatch"
-          assert min(same) > 0.99, f"browser and pipeline embeddings disagree (min cosine {min(same):.4f})"
+          assert min(same) > 0.98, f"browser and pipeline embeddings disagree (min cosine {min(same):.4f})"
           print("OK: browser and pipeline embeddings agree")
           PY

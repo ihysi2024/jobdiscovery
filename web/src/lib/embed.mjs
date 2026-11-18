@@ -5,13 +5,15 @@
 
 export const EMBED_MODEL = "Xenova/bge-small-en-v1.5";
 export const EMBED_DIM = 384;
+export const EMBED_DTYPE = (typeof process !== "undefined" && process.env && process.env.EMBED_DTYPE) || "q8";
 
 let extractor = null;
 
 async function load() {
   if (!extractor) {
     const { pipeline } = await import("@huggingface/transformers");
-    extractor = pipeline("feature-extraction", EMBED_MODEL, { dtype: "fp32" });
+    // q8 is a quarter of the download (about 34 MB, cached after the first time).
+    extractor = pipeline("feature-extraction", EMBED_MODEL, { dtype: EMBED_DTYPE });
   }
   return extractor;
 }
