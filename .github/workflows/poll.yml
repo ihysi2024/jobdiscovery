@@ -11,7 +11,7 @@ on:
     # earlier that day aren't due again. Off the hour on purpose: GitHub
     # delays jobs scheduled at :00.
     - cron: "47 9 * * *"
-    - cron: "36 16 * * *"
+    - cron: "16 17 * * *"
   workflow_dispatch:
     inputs:
       limit:
