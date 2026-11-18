@@ -32,6 +32,9 @@ jobs:
 
   probe:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash {0}
     steps:
       - name: Candidate sources (status and a count)
         run: |
@@ -39,7 +42,7 @@ jobs:
           p() { # name, url, [extra curl args...]
             local name=$1 url=$2; shift 2
             local out code
-            out=$(curl -s -m 25 -A "$UA" -w '\n%{http_code}' "$@" "$url")
+            out=$(curl -s -m 25 -A "$UA" -w '\n%{http_code}' "$@" "$url" || true)
             code=${out##*$'\n'}; body=${out%$'\n'*}
             printf '%-34s %s  %s bytes  %s\n' "$name" "$code" "${#body}" "$(printf '%s' "$body" | python3 -c '
           import sys, json
@@ -58,7 +61,7 @@ jobs:
                       r = find(v, depth+1)
                       if r: return r
               if isinstance(d, list): return f"list={len(d)}"
-          print(find(d) or list(d)[:6] if isinstance(d, dict) else find(d))' 2>&1 | head -c 160)"
+          print(find(d) or list(d)[:6] if isinstance(d, dict) else find(d))' 2>&1 | head -c 160 || true)"
           }
           p "NYC Jobs open data"       "https://data.cityofnewyork.us/resource/kpav-sd4t.json?\$select=count(*)"
           p "Amazon search.json"       "https://www.amazon.jobs/en/search.json?loc_query=New%20York%2C%20NY&result_limit=10"
