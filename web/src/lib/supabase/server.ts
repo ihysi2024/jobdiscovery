@@ -97,3 +97,13 @@ export async function ownSavedIds(): Promise<string[]> {
   for (const r of [...((t.data ?? []) as { posting_id: number }[]), ...((f.data ?? []) as { posting_id: number }[])]) ids.add(String(r.posting_id));
   return [...ids];
 }
+
+/** The signed-in person's minimum match percentage for Best match, or null for "any". */
+export async function ownMinFit(): Promise<number | null> {
+  if (!AUTH_ENABLED) return null;
+  const supabase = await supabaseServer();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return null;
+  const { data } = await supabase.from("preferences").select("min_fit").eq("user_id", auth.user.id).maybeSingle();
+  return data && typeof data.min_fit === "number" ? data.min_fit : null;
+}

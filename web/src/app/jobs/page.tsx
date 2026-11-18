@@ -1,7 +1,7 @@
 import Jobs from "@/screens/Jobs";
 import { data } from "@/lib/data";
 import { matchJobs } from "@/lib/data/match";
-import { currentUser, ownSavedIds } from "@/lib/supabase/server";
+import { currentUser, ownMinFit, ownSavedIds } from "@/lib/supabase/server";
 import type { JobPage, JobQuery } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -32,5 +32,6 @@ export default async function Page({ searchParams }: { searchParams: Promise<Par
     // If ranking fails, still show the newest jobs.
     if (sort === "match") page = await data().searchJobs({ ...query, sort: "new" }).catch(() => null);
   }
-  return <Jobs page={page} query={query} error={error} signedIn={signedIn} />;
+  const minFit = signedIn ? await ownMinFit().catch(() => null) : null;
+  return <Jobs page={page} query={query} error={error} signedIn={signedIn} minFit={minFit} />;
 }

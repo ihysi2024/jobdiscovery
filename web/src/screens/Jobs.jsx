@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { likeJob, trackedPostingIds, unlikeJob } from "@/lib/tracker";
 import { ensureProfileEmbedding } from "@/lib/profile";
+import { savePreferences } from "@/lib/answers";
 
 const C = { plum: "#7A3E6E", ink: "#2A2028", muted: "#665D63", soft: "#7A7078", line: "#EFE9D8", chip: "#F7F2E4", plumSoft: "#F3E6EF" };
 const MODE = { onsite: "Onsite", hybrid: "Hybrid", remote: "Remote" };
@@ -96,7 +97,7 @@ function Heart({ on }) {
   );
 }
 
-export default function Jobs({ page, query, error, signedIn = false }) {
+export default function Jobs({ page, query, error, signedIn = false, minFit = /** @type {number | null} */ (null) }) {
   const defaultSort = signedIn ? "match" : "new";
   const router = useRouter();
   const path = usePathname();
@@ -106,6 +107,20 @@ export default function Jobs({ page, query, error, signedIn = false }) {
   const [open, setOpen] = React.useState({});
   const [likeError, setLikeError] = React.useState("");
   const [justSaved, setJustSaved] = React.useState(new Set()); // collapsed to "Saved to My jobs · Undo"
+  const [threshold, setThreshold] = React.useState(minFit);
+  React.useEffect(() => { setThreshold(minFit); }, [minFit]);
+  const changeThreshold = async (value) => {
+    const v = value === "" ? null : Number(value);
+    setThreshold(v);
+    try {
+      await savePreferences({ min_fit: v });
+      setLikeError("");
+      if (p) go({ page: 0 }); else start(() => router.refresh());
+    } catch (e) {
+      setThreshold(minFit);
+      setLikeError(e.message);
+    }
+  };
 
   React.useEffect(() => { setText(query.q || ""); }, [query.q]);
   React.useEffect(() => { trackedPostingIds().then(setLiked).catch(() => {}); }, []);
@@ -208,6 +223,16 @@ export default function Jobs({ page, query, error, signedIn = false }) {
                 {liked.size ? <Link href="/my-jobs">{liked.size} in My jobs →</Link> : null}
               </div>
             </div>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "16px" }}>
+            {query.sort === "match" ? (
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", color: C.muted }} title="Best match hides jobs below this match percentage. Jobs we can't score yet stay visible.">
+                Show
+                <select value={threshold == null ? "" : String(threshold)} onChange={(e) => changeThreshold(e.target.value)} style={{ height: "36px", padding: "0 10px", border: "1px solid #E6DED0", borderRadius: "8px", background: "#FFFFFF", font: "400 14px Inter, sans-serif", color: C.ink }}>
+                  <option value="">Any match</option>
+                  {[30, 40, 50, 60, 70, 80, 90].map((n) => <option key={n} value={n}>{n}%+ match</option>)}
+                </select>
+              </label>
+            ) : null}
             <label style={{ display: "flex", alignItems: "center", gap: "8px", color: C.muted }}>
               Sort
               <select value={query.sort || defaultSort} onChange={(e) => go({ sort: e.target.value })} style={{ height: "36px", padding: "0 10px", border: "1px solid #E6DED0", borderRadius: "8px", background: "#FFFFFF", font: "400 14px Inter, sans-serif", color: C.ink }}>
@@ -216,6 +241,7 @@ export default function Jobs({ page, query, error, signedIn = false }) {
                 <option value="pay">Highest pay</option>
               </select>
             </label>
+            </div>
           </div>
           {likeError ? <p role="alert" style={{ margin: "12px 0 0", color: "#8A2A2A" }}>{likeError}</p> : null}
           {error ? <p role="alert" style={{ margin: "24px 0", color: "#8A2A2A" }}>{error}</p> : null}
@@ -266,7 +292,9 @@ export default function Jobs({ page, query, error, signedIn = false }) {
 
           {!jobs.length && !error ? (
             <div style={{ padding: "48px 0", textAlign: "center", color: C.muted }}>
-              {filtered ? "No jobs match. Try a different search or clear a filter." : "No jobs yet. New ones are added every day."}
+              {query.sort === "match" && threshold != null
+                ? <>No jobs are a {threshold}% match or better{filtered ? " with these filters" : ""}. <button type="button" onClick={() => changeThreshold(String(Math.max(0, threshold - 20)))} style={{ border: "none", background: "transparent", color: C.plum, font: "inherit", textDecoration: "underline", padding: 0 }}>Lower it to {Math.max(0, threshold - 20)}%</button></>
+                : filtered ? "No jobs match. Try a different search or clear a filter." : "No jobs yet. New ones are added every day."}
             </div>
           ) : null}
 

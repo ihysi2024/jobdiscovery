@@ -128,6 +128,10 @@ export default function Profile() {
                   ? trades.filter(([, v]) => v === "Yes").map(([k]) => <div key={k}>{TRADE[k] || k}</div>)
                   : <Missing>{pref && pref.tradeoffs === null ? "Skipped" : trades.length ? "No firm yeses" : "Not answered"}</Missing>}
               </Row>
+              <Row name="Minimum match">
+                {pref && typeof pref.min_fit === "number" ? `${pref.min_fit}% or better` : <Missing>Any</Missing>}
+                <div style={{ fontSize: "13px", color: C.muted }}>Change it from the Show menu on <Link href="/jobs" style={{ color: C.plum }}>Jobs</Link>.</div>
+              </Row>
               <Row name="Where">
                 {pref && ((pref.work_modes || []).length || (pref.nyc_areas || []).length)
                   ? [...(pref.work_modes || []).map((m) => MODES[m] || m), ...(pref.nyc_areas || []).map((a) => AREAS[a] || a)].join(" · ")
