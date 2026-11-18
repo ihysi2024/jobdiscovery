@@ -77,7 +77,7 @@ def bounded_schema(schema: dict) -> dict:
     props = s["properties"]
     props["company_name"]["anyOf"][0]["maxLength"] = 100
     props["role_title"]["maxLength"] = 120
-    props["summary"]["maxLength"] = 240
+    props["summary"]["maxLength"] = 200
     props["skills"].update(maxItems=8)
     props["skills"]["items"]["maxLength"] = 40
     ip = props["interview_process"]["anyOf"][0]["properties"]
@@ -169,6 +169,31 @@ def annualize(lo, hi, period: str | None) -> tuple[float | None, float | None]:
     return lo, hi
 
 
+_SENTENCE_END = re.compile(r"(?<=[a-z0-9)%][.!?])\s+(?=[A-Z0-9])")
+_BOILERPLATE_STEP = re.compile(r"accommodat|EEO|equal (employment )?opportunity|disabilit|reach out to|e-?mail us", re.I)
+
+
+def clean_summary(text: str | None) -> str | None:
+    """Keep the first sentence. Small models sometimes keep talking after it."""
+    if not text:
+        return None
+    first = _SENTENCE_END.split(text.strip(), maxsplit=1)[0].strip()
+    first = re.sub(r"[^\x00-\u024F\u2010-\u2027]+.*$", "", first).strip()  # stray non-Latin text
+    if len(first) > 200:
+        first = first[:200].rsplit(" ", 1)[0].rstrip(",;:") + "…"
+    return first or None
+
+
+def clean_interview(proc: dict | None) -> dict | None:
+    """A hiring process needs at least two real steps; one line about accommodations isn't one."""
+    if not proc:
+        return None
+    stages = [st for st in proc.get("stages") or [] if not _BOILERPLATE_STEP.search(st.get("detail") or "")]
+    if len(stages) < 2:
+        return None
+    return {"stages": stages, "timeline": proc.get("timeline")}
+
+
 def finalize(p: dict, rule: dict, llm: dict | None) -> dict:
     """Merge rule fields, model fields and the hiring system's own structured data."""
     llm = llm or {}
@@ -187,8 +212,8 @@ def finalize(p: dict, rule: dict, llm: dict | None) -> dict:
         "work_mode": rule.get("work_mode"),
         "employment_type": rule.get("employment_type"),
     }
-    if out["interview_process"] and not out["interview_process"].get("stages"):
-        out["interview_process"] = None
+    out["summary"] = clean_summary(out["summary"])
+    out["interview_process"] = clean_interview(out["interview_process"])
 
     # Salary: the hiring system's structured fields first, then the posting text.
     lo = hi = None
@@ -335,13 +360,18 @@ class ClaudeBackend:
         return None
 
 
+# Bump when rules, prompt or schema change in a way that should relabel jobs (see `process --redo`).
+VERSION = 2
+
+
 @dataclass
 class Classifier:
     backend: object | None  # LocalBackend, ClaudeBackend, or None for rules only
 
     @property
     def method(self) -> str:
-        return "rules" if self.backend is None else f"rules+{self.backend.name}"
+        base = "rules" if self.backend is None else f"rules+{self.backend.name}"
+        return f"{base}/v{VERSION}"
 
     @property
     def usage(self) -> Usage:

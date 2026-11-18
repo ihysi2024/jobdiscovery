@@ -13,9 +13,9 @@ import re
 
 # ----------------------------------------------------------------- salary
 
-_NUM = r"\$?\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s?([kK])?"
+_NUM = r"\$?\s?(\d{1,3}(?:,\d{3})+(?:\.\d{2})?|\d+(?:\.\d+)?)\s?([kK])?"
 _DASH = r"\s*(?:-|–|—|to|and)\s*"
-_UNIT = r"(?:\s?/\s?(?:h(?:ou)?r|y(?:ea)?r)|\s+(?:per|an|a)\s+(?:hour|year))?"
+_UNIT = r"(?:\s?/\s?(?:per\s+)?(?:h(?:ou)?r|y(?:ea)?r)|\s+(?:per|an|a)\s+(?:hour|year))?"
 _RANGE = re.compile(r"(?:USD\s*)?\$\s?" + _NUM[3:] + _UNIT + _DASH + r"(?:USD\s*)?" + _NUM, re.I)
 _SINGLE = re.compile(r"(?:USD\s*)?\$\s?" + _NUM[3:], re.I)
 
@@ -195,7 +195,10 @@ def degree_required(text: str) -> str:
 _NO_SPONSOR = re.compile(
     r"(unable|not able|cannot|can ?not|will not|won'?t|do(?:es)? not|are not able|is not able)\s+(?:to\s+)?(?:currently\s+)?(?:provide\s+|offer\s+)?(?:visa\s+|immigration\s+|employment\s+)?sponsor|"
     r"no\s+(?:visa\s+)?sponsorship|without\s+(?:the\s+)?(?:need\s+for\s+)?(?:current\s+or\s+future\s+)?(?:visa\s+|employer\s+)?sponsorship|"
-    r"sponsorship\s+(?:is\s+)?not\s+(?:available|provided|offered)|not\s+eligible\s+for\s+(?:visa\s+)?sponsorship",
+    r"sponsorship\s+(?:is\s+)?not\s+(?:available|provided|offered)|not\s+eligible\s+for\s+(?:visa\s+)?sponsorship|"
+    # Roles open only to citizens or permanent residents can't be sponsored either.
+    r"\bITAR\b|must\s+be\s+(?:a\s+)?U\.?S\.?\s+(?:citizen|person)|U\.?S\.?\s+citizenship\s+(?:is\s+)?required|"
+    r"(?:active|current)\s+(?:secret|top\s+secret|TS/SCI|security)\s+clearance",
     re.I)
 _YES_SPONSOR = re.compile(
     r"(?:visa|H-?1B|immigration)\s+sponsorship\s+(?:is\s+)?(?:available|provided|offered)|will\s+sponsor|we\s+(?:do\s+)?sponsor|"
@@ -214,18 +217,28 @@ def visa_sponsorship(text: str) -> str:
 
 # ----------------------------------------------------------------- work mode, employment type
 
+# "No remote or hybrid work", "remote work is not available", "non-remote": these mention
+# a mode only to rule it out, so they're removed before looking for one.
+_MODE_NEGATED = re.compile(
+    r"\b(?:no|not|non|never)[- ](?:\w+\s+){0,2}?(?:remote|hybrid)(?:\s+or\s+(?:remote|hybrid))?\b|"
+    r"\b(?:remote|hybrid)\b(?:[\s,/-]+\w+){0,4}?\s+(?:is\s+|are\s+)?not\s+(?:available|an option|possible|offered|permitted|allowed|eligible|supported)",
+    re.I)
+_STRONG_REMOTE = re.compile(
+    r"(?:this|the)\s+(?:role|position|job)\s+is\s+(?:fully\s+)?remote|remote[- ]first|work\s+(?:from\s+)?(?:anywhere|remotely)|"
+    r"100%\s+remote|fully\s+remote", re.I)
+
+
 def work_mode(structured: str | None, locations: list[str], title: str, text: str) -> str | None:
     s = (structured or "").lower()
     if s in ("onsite", "hybrid", "remote"):
         return s
-    head = " ".join(locations or []) + " " + (title or "")
-    body = (text or "")[:4000]
+    head = _MODE_NEGATED.sub(" ", " ".join(locations or []) + " " + (title or ""))
+    body = _MODE_NEGATED.sub(" ", (text or "")[:4000])
     for blob in (head, body):
         if re.search(r"\bhybrid\b", blob, re.I):
             return "hybrid"
-        if re.search(r"\b(fully\s+)?remote\b(?!\s*-?\s*(?:not|n/a))", blob, re.I) and not re.search(r"not\s+(?:a\s+)?remote|no\s+remote", blob, re.I):
-            if blob is body and not re.search(r"(this|the)\s+(role|position|job)\s+is\s+(fully\s+)?remote|remote[- ]first|work\s+(?:from\s+)?(?:anywhere|remotely)|100%\s+remote|fully\s+remote", blob, re.I):
-                continue
+        # In the title or location line any "remote" counts; in the body only a clear statement does.
+        if re.search(r"\bremote\b", blob, re.I) and (blob is head or _STRONG_REMOTE.search(blob)):
             return "remote"
         if re.search(r"\bon-?site\b|\bin[- ]office\b|\bin[- ]person\b|five days a week in", blob, re.I):
             return "onsite"

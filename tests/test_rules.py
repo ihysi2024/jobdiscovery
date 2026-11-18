@@ -146,3 +146,27 @@ def test_extract_combines_everything():
     assert f["salary"] == {"min": 170000, "max": 200000, "period": "year", "currency": "USD"}
     assert (f["degree_required"], f["visa_sponsorship"], f["work_mode"], f["employment_type"]) == (
         "bachelors", "no", "hybrid", "full_time")
+
+
+# Regressions from real postings (first live classification run)
+
+from jobdiscovery import rules  # noqa: E402
+
+
+def test_salary_with_cents_and_per_year_slash():
+    s = rules.extract_salary("Pay range: Sr. Sales Manager/Level II: $150,000.00 - $205,000.00/per year")
+    assert (s["min"], s["max"], s["period"]) == (150000, 205000, "year")
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("This position will be onsite in Bastrop, TX. Remote work is not available for this role.", "onsite"),
+    ("Requires onsite presence. No remote or hybrid work allowed.", "onsite"),
+    ("This is a non-remote position based in our office.", None),
+])
+def test_work_mode_ignores_ruled_out_modes(text, expected):
+    assert rules.work_mode(None, ["New York, NY"], "Sales Manager", text) == expected
+
+
+def test_citizenship_requirement_means_no_sponsorship():
+    assert rules.visa_sponsorship("To comply with ITAR, applicant must be a U.S. citizen or lawful permanent resident.") == "no"
+    assert rules.visa_sponsorship("Must hold an active Top Secret clearance.") == "no"

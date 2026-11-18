@@ -135,7 +135,7 @@ def test_rules_only_keeps_title_and_rule_fields():
     f = asyncio.run(Classifier(None).classify(p))
     assert f["role_title"] == "Senior Data Analyst" and f["industry"] is None
     assert f["seniority"] == "senior" and f["years_experience_min"] == 5 and f["degree_required"] == "bachelors"
-    assert Classifier(None).method == "rules"
+    assert Classifier(None).method == "rules/v2"
 
 
 def test_trim_keeps_interview_section():
@@ -153,7 +153,7 @@ def test_local_request_shape():
     assert body["chat_template_kwargs"] == {"enable_thinking": False}
     assert body["response_format"]["json_schema"]["schema"] == LOCAL_SCHEMA
     assert len(body["messages"][1]["content"]) < 4000          # long descriptions are trimmed
-    assert f["industry"] == "Health Tech" and c.method == "rules+qwen3.5-4b"
+    assert f["industry"] == "Health Tech" and c.method == "rules+qwen3.5-4b/v2"
     assert c.usage.calls == 1 and c.usage.cost_usd == 0
 
 
@@ -299,7 +299,7 @@ def test_rules_backend_needs_no_model(polled_db, monkeypatch, capsys):
     assert cli.main(["--db", polled_db, "process", "--backend", "rules"]) == 0
     assert "Processed 55 of 55" in capsys.readouterr().out
     s = Store(polled_db)
-    assert s.db.scalar("SELECT COUNT(*) FROM job_features WHERE model='rules'") == 55
+    assert s.db.scalar("SELECT COUNT(*) FROM job_features WHERE model='rules/v2'") == 55
 
 
 def test_report_samples(polled_db, monkeypatch, capsys):
@@ -309,3 +309,34 @@ def test_report_samples(polled_db, monkeypatch, capsys):
     assert cli.main(["--db", polled_db, "report", "--samples", "2"]) == 0
     out = capsys.readouterr().out
     assert "Latest 2 classified jobs" in out and "Health Tech" in out
+
+
+def test_summary_keeps_first_sentence():
+    from jobdiscovery.classify import clean_summary
+    assert clean_summary("Drive enterprise sales for Starlink. 25 words max. No hype. Done. End.") == "Drive enterprise sales for Starlink."
+    assert clean_summary("Requires U.S. citizenship or a绿卡") == "Requires U.S. citizenship or a"
+    assert clean_summary("") is None
+
+
+def test_boilerplate_is_not_an_interview_process():
+    from jobdiscovery.classify import clean_interview
+    one = {"stages": [{"stage": "other", "detail": "Reach out to EEOCompliance@spacex.com"}], "timeline": None}
+    assert clean_interview(one) is None
+    real = {"stages": [{"stage": "recruiter_screen", "detail": "30 min call"}, {"stage": "panel_onsite", "detail": "4 interviews"}], "timeline": "3 weeks"}
+    assert clean_interview(real) == real
+
+
+def test_redo_relabels_older_versions(polled_db, monkeypatch, capsys):
+    from jobdiscovery.store import Store
+    server = FakeLlamaServer()
+    use_fakes(monkeypatch, server)
+    cli.main(["--db", polled_db, "process", "--limit", "5"])
+    s = Store(polled_db)
+    s.db.execute("UPDATE job_features SET model='rules+qwen3.5-4b/v1' WHERE posting_id IN "
+                 "(SELECT posting_id FROM job_features LIMIT 2)")
+    s.close()
+    capsys.readouterr()
+    cli.main(["--db", polled_db, "process", "--limit", "100"])          # new jobs only
+    assert "Processed 50 of 50" in capsys.readouterr().out
+    cli.main(["--db", polled_db, "process", "--redo"])                  # plus the 2 old labels
+    assert "Processed 2 of 2" in capsys.readouterr().out

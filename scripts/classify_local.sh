@@ -43,5 +43,5 @@ done
 echo "Model ready."
 
 jobdiscovery process --backend local --llm-url "http://127.0.0.1:$PORT" \
-  --concurrency "$SLOTS" --chunk 32 "$@"
+  --concurrency "$SLOTS" --chunk 32 --redo "$@"
 jobdiscovery report

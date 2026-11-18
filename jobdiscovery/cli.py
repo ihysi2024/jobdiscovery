@@ -213,13 +213,14 @@ async def cmd_process(args, store: Store) -> int:
     command = "process" if args.shard is None else f"process:{args.shard[0]}/{args.shard[1]}"
 
     async def body(run_id):
-        todo = store.postings_to_process(limit=args.limit, max_attempts=args.max_attempts, shard=args.shard)
+        classifier = _make_classifier(args)
+        todo = store.postings_to_process(limit=args.limit, max_attempts=args.max_attempts, shard=args.shard,
+                                         redo_unless=classifier.method if args.redo else None)
         stats = {"queued": len(todo), "processed": 0, "failed": 0, "stopped_early": None,
                  "cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0}
         if not todo:
             print("Nothing to process: every open NYC job is up to date.")
             return stats
-        classifier = _make_classifier(args)
         if classifier.backend is not None:
             await classifier.backend.check()
         embedder = None if args.no_embed else (EMBEDDER or Embedder())
@@ -436,6 +437,8 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--max-minutes", type=float, help="stop after this long; the rest wait for the next run")
     pr.add_argument("--max-cost", type=float, help="stop once estimated spend reaches this many US dollars")
     pr.add_argument("--no-embed", action="store_true", help="skip embeddings (classification only)")
+    pr.add_argument("--redo", action="store_true",
+                    help="also relabel jobs labeled by an older version or another backend")
 
     c = sub.add_parser("check", help="health check of the latest poll; exits 2 and alerts on problems")
     c.add_argument("--max-age-hours", type=float, default=36, help="latest poll must be newer than this (default 36)")

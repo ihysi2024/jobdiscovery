@@ -7,7 +7,7 @@ name: Classify jobs
 #
 # Starts after every "Daily poll" run, or by hand. The queue is split into
 # shards that run on separate runners at once (free and unlimited for a
-# public repo). Whatever isn't finished in the time budget waits for the next run.
+# public repo; 8 runners do roughly 3,000 jobs in a run). Whatever isn't finished in the time budget waits for the next run.
 
 on:
   workflow_run:
@@ -18,7 +18,7 @@ on:
       shards:
         description: "Parallel runners (1-8)"
         required: false
-        default: "4"
+        default: "8"
       limit:
         description: "Jobs per runner (blank = all queued); use e.g. 20 for a quick test"
         required: false
@@ -48,7 +48,7 @@ jobs:
         env:
           SHARDS: ${{ inputs.shards }}
         run: |
-          n=4
+          n=8
           if [[ "$SHARDS" =~ ^[1-8]$ ]]; then n=$SHARDS; fi
           echo "total=$n" >> "$GITHUB_OUTPUT"
           echo "shards=$(python3 -c "import json; print(json.dumps(list(range($n))))")" >> "$GITHUB_OUTPUT"
@@ -128,7 +128,8 @@ jobs:
           LIMIT: ${{ inputs.limit }}
           MINUTES: ${{ inputs.minutes }}
         run: |
-          ARGS="--backend local --concurrency 2 --chunk 16"
+          # --redo: jobs labeled by an older classifier version get relabeled too.
+          ARGS="--backend local --concurrency 2 --chunk 16 --redo"
           [[ "$TOTAL" -gt 1 ]] && ARGS="$ARGS --shard $SHARD/$TOTAL"
           [[ "$LIMIT" =~ ^[0-9]+$ ]] && ARGS="$ARGS --limit $LIMIT"
           if [[ "$MINUTES" =~ ^[0-9]+$ ]]; then ARGS="$ARGS --max-minutes $MINUTES"; else ARGS="$ARGS --max-minutes 300"; fi

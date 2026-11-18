@@ -105,13 +105,16 @@ into a vector for matching. On Postgres with pgvector (Supabase has it) the
 vectors go in a `vector(384)` column; elsewhere they're stored as JSON.
 
 Results live in the `job_features` table, keyed by posting; `model` records
-how each row was made (`rules+qwen3.5-4b`). A job is processed again only if
+how each row was made (`rules+qwen3.5-4b/v2`). Bump `VERSION` in `classify.py`
+when rules or the prompt change, and `process --redo` (which the workflow
+uses) relabels jobs made by older versions. A job is processed again only if
 its content fingerprint changes. Failures are retried on the next run, up to 3 times.
 
 **Where it runs:**
 
 * **Daily, on GitHub** (`classify.yml`): starts after each daily poll, splits
-  the queue across 4 runners and runs the model on each. Free for a public repo.
+  the queue across 8 runners and runs the model on each (about 30–60 seconds
+  per job per runner, so roughly 3,000 jobs per run). Free for a public repo.
 * **On a Mac**, for the first big batch: `./scripts/classify_local.sh`
   installs llama.cpp, starts the model, classifies everything queued, and
   stops the model. It asks for `DATABASE_URL` without showing it. Stop it
@@ -135,7 +138,7 @@ Four workflows are included in `.github/workflows/`:
 | Workflow | When | What |
 |---|---|---|
 | `poll.yml` | Daily, 09:47 UTC | `poll` every due board, then `check`. Fails (and GitHub emails you) if anything looks wrong. |
-| `classify.yml` | After each daily poll | `process` new/changed jobs with Qwen3.5 4B on 4 runners at once. |
+| `classify.yml` | After each daily poll | `process` new/changed jobs with Qwen3.5 4B on 8 runners at once. |
 | `discover.yml` | Sundays, 13:23 UTC | Searches the latest Common Crawl indexes for new boards. |
 | `tests.yml` | Every push | Runs the tests on SQLite and on a real Postgres. |
 

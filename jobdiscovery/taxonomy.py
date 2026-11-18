@@ -65,6 +65,7 @@ INDUSTRIES = [
     "Manufacturing & Hardware",
     "Crypto & Web3",
     "Telecommunications",
+    "Aerospace & Defense",
     "Other",
 ]
 

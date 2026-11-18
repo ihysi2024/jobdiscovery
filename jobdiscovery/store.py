@@ -371,18 +371,19 @@ class Store:
     # ---------------------------------------------------------------- processing
 
     def postings_to_process(self, *, limit: int | None = None, max_attempts: int = 3,
-                            shard: tuple[int, int] | None = None) -> list[dict]:
+                            shard: tuple[int, int] | None = None, redo_unless: str | None = None) -> list[dict]:
         """Open postings whose content hasn't been classified yet (new, changed, or failed < max_attempts).
 
-        ``shard=(i, n)`` returns only postings with ``id % n == i``, so n workers can split the queue."""
+        ``shard=(i, n)`` returns only postings with ``id % n == i``, so n workers can split the queue.
+        ``redo_unless=method`` also returns open postings classified by any other method."""
         sql = ("SELECT p.id, p.board_key, p.title, p.locations, p.department, p.workplace_type, p.is_remote, "
                "p.salary_min, p.salary_max, p.salary_currency, p.salary_interval, p.description_text, "
                "p.content_hash, b.ats, b.token "
                "FROM postings p JOIN boards b ON b.key = p.board_key "
                "LEFT JOIN job_features f ON f.posting_id = p.id "
-               "WHERE p.closed_at IS NULL AND (p.processed_hash IS NULL OR p.processed_hash != p.content_hash) "
-               "AND COALESCE(f.attempts, 0) < ?")
-        args: list = [max_attempts]
+               "WHERE p.closed_at IS NULL AND (p.processed_hash IS NULL OR p.processed_hash != p.content_hash"
+               + (" OR f.model != ?" if redo_unless else "") + ") AND COALESCE(f.attempts, 0) < ?")
+        args: list = ([redo_unless] if redo_unless else []) + [max_attempts]
         if shard is not None:
             sql += " AND p.id % ? = ?"
             args += [shard[1], shard[0]]
