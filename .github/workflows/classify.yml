@@ -88,14 +88,15 @@ jobs:
       - name: Install llama.cpp (latest prebuilt release)
         run: |
           mkdir -p /tmp/llama && cd /tmp/llama
-          # Pick the plain CPU build for x64 Linux from whatever the latest release names it.
-          assets=$(gh release view -R ggml-org/llama.cpp --json assets -q '.assets[].name')
-          echo "$assets"
-          asset=$(echo "$assets" | grep -iE '(ubuntu|linux)' | grep -iE '(x64|x86_64|amd64)' \
+          # Newest release that has a plain CPU build for x64 Linux (some releases are just markers).
+          gh api "repos/ggml-org/llama.cpp/releases?per_page=15" \
+            -q '.[] | .tag_name as $t | .assets[].name | "\($t) \(.)"' > releases.txt
+          match=$(grep -iE ' [^ ]*(ubuntu|linux)[^ ]*(x64|x86_64|amd64)' releases.txt \
                   | grep -viE 'vulkan|cuda|rocm|hip|sycl|openvino|kompute|musa|opencl|arm|aarch64|s390' | head -1)
-          if [ -z "$asset" ]; then echo "::error::no CPU Linux build in the latest llama.cpp release"; exit 1; fi
-          echo "Using $asset"
-          gh release download -R ggml-org/llama.cpp --pattern "$asset"
+          if [ -z "$match" ]; then echo "::error::no CPU Linux build in recent llama.cpp releases"; head -40 releases.txt; exit 1; fi
+          read -r tag asset <<< "$match"
+          echo "Using $tag $asset"
+          gh release download "$tag" -R ggml-org/llama.cpp --pattern "$asset"
           case "$asset" in *.zip) unzip -q "$asset" ;; *.tar.gz|*.tgz) tar xzf "$asset" ;; *.tar.xz) tar xJf "$asset" ;; esac
           bin=$(dirname "$(find /tmp/llama -type f -name llama-server | head -1)")
           echo "$bin" >> "$GITHUB_PATH"
