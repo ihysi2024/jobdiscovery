@@ -161,3 +161,14 @@ def test_discover_fails_loudly_when_most_pages_fail(tmp_path, monkeypatch, capsy
     s = Store(db)
     assert s.summary()["boards"] == 2       # greenhouse boards found before the failures are kept
     assert s.recent_runs("discover")[0]["status"] == "failed"
+
+
+def test_check_flags_failed_classification(tmp_path, capsys):
+    from jobdiscovery.store import Store
+    db = str(tmp_path / "jobs.sqlite")
+    s = Store(db)
+    r = s.start_run("poll"); s.finish_run(r, "ok", {"attempted": 100, "error": 0, "open_nyc_after": 500})
+    r = s.start_run("process"); s.finish_run(r, "failed", error="AuthenticationError: invalid x-api-key")
+    s.close()
+    assert cli.main(["--db", db, "check"]) == 2
+    assert "last classification run ended with status 'failed'" in capsys.readouterr().err

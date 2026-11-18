@@ -3,6 +3,7 @@
     jobdiscovery discover            # find boards in Common Crawl
     jobdiscovery add URL [URL ...]   # add boards from job links (e.g. user-pasted)
     jobdiscovery poll                # poll boards that are due
+    jobdiscovery process             # classify + embed new/changed NYC jobs (needs ANTHROPIC_API_KEY)
     jobdiscovery check               # health check; non-zero exit + alert if something looks wrong
     jobdiscovery report --csv out/   # what we found
 
@@ -43,8 +44,10 @@ API_HOST_LIMITS = {
     "index.commoncrawl.org": 1,
 }
 
-# Tests swap in an httpx.MockTransport here.
+# Tests swap in an httpx.MockTransport here, and fakes for the classifier/embedder.
 TRANSPORT = None
+CLASSIFIER = None
+EMBEDDER = None
 
 
 def _ats_arg(value: str | None) -> set[str] | None:
@@ -185,6 +188,73 @@ async def cmd_poll(args, store: Store) -> int:
     return await _locked(store, "poll", body)
 
 
+async def cmd_process(args, store: Store) -> int:
+    from .classify import Classifier
+    from .embed import Embedder, job_text
+
+    async def body(run_id):
+        todo = store.postings_to_process(limit=args.limit, max_attempts=args.max_attempts)
+        stats = {"queued": len(todo), "processed": 0, "failed": 0, "stopped_early": None,
+                 "cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0}
+        if not todo:
+            print("Nothing to process: every open NYC job is up to date.")
+            return stats
+        classifier = CLASSIFIER or Classifier.from_env(args.model)
+        embedder = None if args.no_embed else (EMBEDDER or Embedder())
+        print(f"Processing {len(todo)} jobs with {classifier.model}"
+              f"{'' if embedder is None else ' + ' + embedder.model_name} ...", file=sys.stderr)
+
+        deadline = _deadline(args.max_minutes)
+        sem = asyncio.Semaphore(args.concurrency)
+        started = time.monotonic()
+
+        async def classify_one(p):
+            async with sem:
+                try:
+                    return p, await classifier.classify(p), None
+                except Exception as e:  # one bad job must not stop the run
+                    return p, None, f"{type(e).__name__}: {e}"
+
+        for i in range(0, len(todo), args.chunk):
+            if deadline is not None and time.monotonic() >= deadline:
+                stats["stopped_early"] = "time"
+                break
+            if args.max_cost is not None and classifier.usage.cost_usd >= args.max_cost:
+                stats["stopped_early"] = "cost"
+                break
+            chunk = todo[i:i + args.chunk]
+            results = await asyncio.gather(*(classify_one(p) for p in chunk))
+            ok = [(p, f) for p, f, err in results if f is not None]
+            for p, f, err in results:
+                if err:
+                    store.record_feature_error(p["id"], err)
+                    stats["failed"] += 1
+                    log.warning("job %s failed: %s", p["id"], err)
+            vectors = embedder.embed([job_text(p, f) for p, f in ok]) if (embedder and ok) else [None] * len(ok)
+            for (p, f), vec in zip(ok, vectors):
+                store.save_features(p["id"], p["content_hash"], f, model=classifier.model, embedding=vec,
+                                    embedding_model=embedder.model_name if embedder else None)
+                stats["processed"] += 1
+            store.heartbeat(run_id)
+            done = stats["processed"] + stats["failed"]
+            rate = done / max(time.monotonic() - started, 1e-6)
+            print(f"  {done}/{len(todo)} jobs  ({rate:.1f}/s)  ${classifier.usage.cost_usd:.2f} so far",
+                  file=sys.stderr)
+
+        u = classifier.usage
+        stats.update(cost_usd=round(u.cost_usd, 4), input_tokens=u.input_tokens, output_tokens=u.output_tokens,
+                     cache_read_tokens=u.cache_read_tokens)
+        note = {"time": " Stopped at the time limit.", "cost": " Stopped at the cost limit."}.get(stats["stopped_early"] or "", "")
+        print(f"Processed {stats['processed']} of {len(todo)} jobs, {stats['failed']} failed "
+              f"(retried next run, up to {args.max_attempts} tries). Cost about ${u.cost_usd:.2f}.{note}")
+        if stats["failed"] and stats["failed"] > max(5, 0.5 * (stats["processed"] + stats["failed"])):
+            raise RuntimeError(f"{stats['failed']} of {stats['processed'] + stats['failed']} jobs failed to process; "
+                               f"check the API key, model name and the logs.")
+        return stats
+
+    return await _locked(store, "process", body)
+
+
 def health_problems(store: Store, *, max_age_hours: float, max_error_rate: float, max_drop: float) -> list[str]:
     """Return a list of problems with the latest poll, or [] if it looks healthy."""
     problems = []
@@ -214,6 +284,11 @@ def health_problems(store: Store, *, max_age_hours: float, max_error_rate: float
                             f"({1 - now_open / before:.0%} drop) in one run")
     if now_open == 0 and store.summary()["boards_with_nyc_jobs"] > 0:
         problems.append("no open NYC jobs stored even though boards report NYC jobs")
+
+    proc = store.recent_runs("process", limit=1)
+    if proc and proc[0]["status"] != "ok":
+        problems.append(f"last classification run ended with status '{proc[0]['status']}': "
+                        f"{proc[0].get('error') or 'no details'}")
     return problems
 
 
@@ -238,6 +313,7 @@ async def cmd_report(args, store: Store) -> int:
         print(f"Boards with NYC jobs:    {s['boards_with_nyc_jobs']:>8,}")
         print(f"Open NYC postings:       {s['open_nyc_postings']:>8,}")
         print(f"  ...with salary info:   {s['nyc_postings_with_salary']:>8,}")
+        print(f"  ...classified:         {s['processed_open']:>8,}")
         print(f"Postings to process:     {s['needs_processing']:>8,}")
         print()
         print(f"{'hiring system':<16}{'boards':>8}{'polled':>8}{'gone':>7}{'errors':>8}{'w/ NYC':>8}{'NYC jobs':>10}")
@@ -297,6 +373,16 @@ def build_parser() -> argparse.ArgumentParser:
     pl.add_argument("--all-locations", action="store_true", help="store non-NYC postings too (much bigger database)")
     pl.add_argument("--max-minutes", type=float, help="stop starting new boards after this long; the rest stay due")
 
+    pr = sub.add_parser("process", help="classify and embed new or changed NYC jobs (needs ANTHROPIC_API_KEY)")
+    pr.add_argument("--limit", type=int, help="process at most this many jobs")
+    pr.add_argument("--concurrency", type=int, default=8, help="jobs classified at once (default 8)")
+    pr.add_argument("--chunk", type=int, default=64, help="jobs per save/embedding batch (default 64)")
+    pr.add_argument("--model", help="Claude model (default claude-haiku-5-5, or $JOBDISCOVERY_MODEL)")
+    pr.add_argument("--max-attempts", type=int, default=3, help="give up on a job after this many failures")
+    pr.add_argument("--max-minutes", type=float, help="stop after this long; the rest wait for the next run")
+    pr.add_argument("--max-cost", type=float, help="stop once estimated spend reaches this many US dollars")
+    pr.add_argument("--no-embed", action="store_true", help="skip embeddings (classification only)")
+
     c = sub.add_parser("check", help="health check of the latest poll; exits 2 and alerts on problems")
     c.add_argument("--max-age-hours", type=float, default=36, help="latest poll must be newer than this (default 36)")
     c.add_argument("--max-error-rate", type=float, default=0.5, help="share of boards allowed to fail (default 0.5)")
@@ -308,7 +394,8 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-COMMANDS = {"discover": cmd_discover, "add": cmd_add, "poll": cmd_poll, "check": cmd_check, "report": cmd_report}
+COMMANDS = {"discover": cmd_discover, "add": cmd_add, "poll": cmd_poll, "process": cmd_process,
+            "check": cmd_check, "report": cmd_report}
 
 
 def main(argv=None) -> int:

@@ -23,7 +23,7 @@ pytestmark = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
 def clean(monkeypatch):
     import psycopg
     with psycopg.connect(URL, autocommit=True) as c:
-        c.execute("DROP TABLE IF EXISTS postings, boards, runs CASCADE")
+        c.execute("DROP TABLE IF EXISTS job_features, postings, boards, runs CASCADE")
     monkeypatch.setattr(cli, "TRANSPORT", transport())
     import jobdiscovery.http as h
     monkeypatch.setattr(h.PoliteClient, "_backoff", lambda self, attempt: 0)
@@ -62,4 +62,25 @@ def test_lock_on_postgres():
     s.start_run("poll")
     with pytest.raises(LockHeld):
         s.start_run("poll")
+    s.close()
+
+
+def test_process_on_postgres_with_pgvector(capsys, monkeypatch):
+    from types import SimpleNamespace
+    from jobdiscovery.classify import Classifier
+    from test_classify import FakeEmbedder, FakeMessages
+    monkeypatch.setattr(cli, "CLASSIFIER", Classifier(client=SimpleNamespace(messages=FakeMessages())))
+    monkeypatch.setattr(cli, "EMBEDDER", FakeEmbedder())
+    cli.main(["--db", URL, "discover"])
+    cli.main(["--db", URL, "poll"])
+    capsys.readouterr()
+    assert cli.main(["--db", URL, "process"]) == 0
+    assert "Processed 55 of 55 jobs, 0 failed" in capsys.readouterr().out
+    s = Store(URL)
+    assert s.summary()["needs_processing"] == 0
+    if s.has_pgvector:
+        # Nearest-neighbour query works on the stored vectors.
+        row = s.db.one("SELECT COUNT(*) AS n FROM job_features WHERE embedding <-> CAST(? AS vector) < 100",
+                       ("[" + ",".join(["0.1"] * 384) + "]",))
+        assert row["n"] == 55
     s.close()

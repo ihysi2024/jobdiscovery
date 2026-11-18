@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16  # Postgres 16 with pgvector, like Supabase
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: jobs_test

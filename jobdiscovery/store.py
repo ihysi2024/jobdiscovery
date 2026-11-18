@@ -79,8 +79,39 @@ CREATE TABLE IF NOT EXISTS runs (
     stats           TEXT,
     error           TEXT
 );
-CREATE INDEX IF NOT EXISTS runs_command ON runs(command, started_at)
+CREATE INDEX IF NOT EXISTS runs_command ON runs(command, started_at);
+CREATE TABLE IF NOT EXISTS job_features (
+    posting_id          BIGINT PRIMARY KEY REFERENCES postings(id) ON DELETE CASCADE,
+    processed_hash      TEXT,
+    processed_at        TEXT,
+    model               TEXT,
+    attempts            INTEGER NOT NULL DEFAULT 0,
+    last_error          TEXT,
+    company_name        TEXT,
+    industry            TEXT,
+    role_family         TEXT,
+    role_title          TEXT,
+    seniority           TEXT,
+    employment_type     TEXT,
+    work_mode           TEXT,
+    salary_min_annual   {float},
+    salary_max_annual   {float},
+    salary_currency     TEXT,
+    salary_source       TEXT,
+    years_experience_min {float},
+    degree_required     TEXT,
+    visa_sponsorship    TEXT,
+    skills              TEXT,
+    interview_process   TEXT,
+    summary             TEXT,
+    embedding_model     TEXT,
+    embedding           {vector}
+);
+CREATE INDEX IF NOT EXISTS job_features_role ON job_features(role_family, seniority);
+CREATE INDEX IF NOT EXISTS job_features_industry ON job_features(industry)
 """
+
+from .embed import EMBED_DIM  # noqa: E402  (keeps the schema in step with the embedding model)
 
 DAILY = timedelta(days=1)
 MONTHLY = timedelta(days=30)
@@ -113,11 +144,24 @@ class PollStats:
 class Store:
     def __init__(self, url: str):
         self.db = DB(url)
+        self.has_pgvector = False
         if self.db.postgres:
-            schema = _SCHEMA.format(id_col="BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY", float="DOUBLE PRECISION")
+            self.has_pgvector = self._enable_pgvector()
+            vector = f"vector({EMBED_DIM})" if self.has_pgvector else "TEXT"
+            schema = _SCHEMA.format(id_col="BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY",
+                                    float="DOUBLE PRECISION", vector=vector)
         else:
-            schema = _SCHEMA.format(id_col="INTEGER PRIMARY KEY AUTOINCREMENT", float="REAL")
+            schema = _SCHEMA.format(id_col="INTEGER PRIMARY KEY AUTOINCREMENT", float="REAL", vector="TEXT")
         self.db.script(schema)
+
+    def _enable_pgvector(self) -> bool:
+        """Use pgvector for embeddings when the database allows it (Supabase and Neon do)."""
+        try:
+            self.db.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            return True
+        except Exception:
+            # Not installed or no permission: embeddings are stored as JSON text instead.
+            return False
 
     def close(self):
         self.db.close()
@@ -258,6 +302,7 @@ class Store:
                         "posted_at=?, department=?, salary_min=?, salary_max=?, salary_currency=?, salary_interval=?, "
                         "description_text=?, payload=?, content_hash=?, last_seen_at=?, changed_at=?, closed_at=NULL "
                         "WHERE id=?", (*values, h, ts, ts, row["id"]))
+                    self.db.execute("UPDATE job_features SET attempts=0, last_error=NULL WHERE posting_id=?", (row["id"],))
                     stats.changed += 1
 
             # Close anything stored for this board that wasn't in this poll.
@@ -277,6 +322,66 @@ class Store:
                 "open_jobs=?, nyc_jobs=?, next_poll_at=? WHERE key=?",
                 (ts, stats.open_jobs, stats.nyc_jobs, iso(nxt), board.key))
         return stats
+
+    # ---------------------------------------------------------------- processing
+
+    def postings_to_process(self, *, limit: int | None = None, max_attempts: int = 3) -> list[dict]:
+        """Open postings whose content hasn't been classified yet (new, changed, or failed < max_attempts)."""
+        sql = ("SELECT p.id, p.board_key, p.title, p.locations, p.department, p.workplace_type, p.is_remote, "
+               "p.salary_min, p.salary_max, p.salary_currency, p.salary_interval, p.description_text, "
+               "p.content_hash, b.ats, b.token "
+               "FROM postings p JOIN boards b ON b.key = p.board_key "
+               "LEFT JOIN job_features f ON f.posting_id = p.id "
+               "WHERE p.closed_at IS NULL AND (p.processed_hash IS NULL OR p.processed_hash != p.content_hash) "
+               "AND COALESCE(f.attempts, 0) < ? ORDER BY p.first_seen_at DESC, p.id")
+        args: list = [max_attempts]
+        if limit:
+            sql += " LIMIT ?"
+            args.append(limit)
+        return [dict(r) for r in self.db.all(sql, args)]
+
+    _FEATURE_COLS = ("company_name", "industry", "role_family", "role_title", "seniority", "employment_type",
+                     "work_mode", "salary_min_annual", "salary_max_annual", "salary_currency", "salary_source",
+                     "years_experience_min", "degree_required", "visa_sponsorship", "skills", "interview_process",
+                     "summary")
+
+    def save_features(self, posting_id: int, content_hash: str, features: dict, *, model: str,
+                      embedding: list[float] | None = None, embedding_model: str | None = None,
+                      when: datetime | None = None):
+        """Store classification results and mark the posting processed for this exact content."""
+        ts = iso(when or now_utc())
+        vals = []
+        for col in self._FEATURE_COLS:
+            v = features.get(col)
+            if isinstance(v, (list, dict)):
+                v = json.dumps(v, ensure_ascii=False)
+            vals.append(v)
+        emb = json.dumps([round(x, 6) for x in embedding]) if embedding is not None else None
+        emb_sql = "CAST(? AS vector)" if self.has_pgvector else "?"
+        cols = ", ".join(self._FEATURE_COLS)
+        marks = ", ".join("?" * len(self._FEATURE_COLS))
+        updates = ", ".join(f"{c}=excluded.{c}" for c in self._FEATURE_COLS)
+        with self.db.tx():
+            self.db.execute(
+                f"INSERT INTO job_features (posting_id, processed_hash, processed_at, model, attempts, last_error, "
+                f"{cols}, embedding_model, embedding) VALUES (?, ?, ?, ?, 0, NULL, {marks}, ?, {emb_sql}) "
+                f"ON CONFLICT (posting_id) DO UPDATE SET processed_hash=excluded.processed_hash, "
+                f"processed_at=excluded.processed_at, model=excluded.model, attempts=0, last_error=NULL, {updates}, "
+                f"embedding_model=excluded.embedding_model, embedding=excluded.embedding",
+                (posting_id, content_hash, ts, model, *vals, embedding_model, emb))
+            # Only mark processed if the posting hasn't changed while we were working on it.
+            self.db.execute("UPDATE postings SET processed_hash=? WHERE id=? AND content_hash=?",
+                            (content_hash, posting_id, content_hash))
+
+    def record_feature_error(self, posting_id: int, error: str):
+        self.db.execute(
+            "INSERT INTO job_features (posting_id, attempts, last_error) VALUES (?, 1, ?) "
+            "ON CONFLICT (posting_id) DO UPDATE SET attempts=job_features.attempts + 1, last_error=excluded.last_error",
+            (posting_id, error[:1000]))
+
+    def features_for(self, posting_id: int) -> dict | None:
+        row = self.db.one("SELECT * FROM job_features WHERE posting_id=?", (posting_id,))
+        return dict(row) if row else None
 
     # ---------------------------------------------------------------- queries
 
@@ -301,6 +406,8 @@ class Store:
                                           "AND (salary_min IS NOT NULL OR description_text LIKE '%$%')"),
             "needs_processing": q("SELECT COUNT(*) FROM postings WHERE closed_at IS NULL "
                                   "AND (processed_hash IS NULL OR processed_hash != content_hash)"),
+            "processed_open": q("SELECT COUNT(*) FROM postings p JOIN job_features f ON f.posting_id = p.id "
+                                "WHERE p.closed_at IS NULL AND f.processed_hash = p.content_hash"),
             "by_ats": by_ats,
         }
 

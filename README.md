@@ -1,7 +1,8 @@
 # jobdiscovery
 
 Finds employers with open **New York City** jobs by reading the public job
-boards of five hiring systems, and keeps those jobs fresh.
+boards of five hiring systems, keeps those jobs fresh, and classifies each one
+(role, industry, seniority, salary, interview process) for search and matching.
 
 | Hiring system | Endpoint | Status |
 |---|---|---|
@@ -23,7 +24,9 @@ boards of five hiring systems, and keeps those jobs fresh.
    * New or changed: `content_hash != processed_hash`, so later steps
      (classification, embeddings) know to process it.
    * Missing from a successful poll: marked `closed_at`. Failed polls never close anything.
-3. **report** prints the numbers and can export CSVs.
+3. **process** classifies new or changed jobs with Claude and embeds them for
+   matching (see below). Unchanged jobs are never sent again.
+4. **report** prints the numbers and can export CSVs.
 
 Scheduling is built in: boards with NYC jobs are due daily, boards without
 are rechecked every 30 days, dead boards every 90, and errors back off from
@@ -70,13 +73,48 @@ jobdiscovery add https://jobs.lever.co/somecompany/abc-123
 jobdiscovery add --file links.txt --source user
 ```
 
+## Classifying jobs (`process`)
+
+Each open NYC job gets one call to Claude Haiku 5.5 with a fixed JSON schema
+(structured outputs), producing:
+
+| Field | Values |
+|---|---|
+| `role_family`, `industry` | Fixed lists in `jobdiscovery/taxonomy.py`, covering every field, not just tech |
+| `seniority` | intern, entry, mid, senior, staff_principal, manager, director, executive |
+| `role_title`, `company_name`, `summary` | Cleaned title, employer, one-sentence description |
+| `salary_min_annual`, `salary_max_annual`, `salary_source` | Annualized base pay. The hiring system's own salary fields win; otherwise it's read from the text (NYC postings must include a range). Never guessed. |
+| `years_experience_min`, `degree_required`, `visa_sponsorship`, `skills` | Only what the posting states |
+| `interview_process` | Stages and timeline, only when the posting describes them |
+| `work_mode` | onsite, hybrid or remote (hiring-system field wins) |
+
+Then a small open embedding model (`BAAI/bge-small-en-v1.5`, 384 dimensions,
+via fastembed) turns each job into a vector for matching. It runs on the
+GitHub runner, so there's no embedding API or cost. On Postgres with pgvector
+(Supabase has it) the vectors are stored in a `vector(384)` column; elsewhere as JSON.
+
+Results live in the `job_features` table, keyed by posting. A job is only sent
+to Claude again if its content fingerprint changes. Failures are retried on
+the next run, up to 3 times.
+
+**Cost:** about $0.0004 per job at Haiku 5.5 prices ($0.10 / $0.50 per million
+input/output tokens), so roughly $2–3 for the first ~6,000 jobs and cents per
+day after that. `--max-cost` caps a single run (the workflow uses $15).
+
+```bash
+pip install -e ".[process]"
+export ANTHROPIC_API_KEY=...
+jobdiscovery process --limit 20      # try a few first
+jobdiscovery process                 # everything that needs it
+```
+
 ## Deploying: runs every day on GitHub Actions
 
 Three workflows are included in `.github/workflows/`:
 
 | Workflow | When | What |
 |---|---|---|
-| `poll.yml` | Daily, 09:47 UTC | `poll` every due board, then `check`. Fails (and GitHub emails you) if anything looks wrong. |
+| `poll.yml` | Daily, 09:47 UTC | `poll` every due board, `process` new/changed jobs (if `ANTHROPIC_API_KEY` is set), then `check`. Fails (and GitHub emails you) if anything looks wrong. |
 | `discover.yml` | Sundays, 13:23 UTC | Searches the latest Common Crawl indexes for new boards. |
 | `tests.yml` | Every push | Runs the tests on SQLite and on a real Postgres. |
 
@@ -98,6 +136,8 @@ All three can also be started by hand from the **Actions** tab ("Run workflow").
 2. **Add it to the repo.** Settings → Secrets and variables → Actions:
    * Secret `DATABASE_URL`: the connection string.
    * Variable `JOBDISCOVERY_CONTACT`: an email address site owners can reach you at.
+   * Secret `ANTHROPIC_API_KEY`: a Claude API key from console.anthropic.com, to classify jobs.
+     Without it, polling still runs and classification is skipped.
    * Optional secret `ALERT_WEBHOOK_URL`: a Slack or Discord incoming webhook for alerts.
 3. **Seed it.** Actions → Weekly discovery → Run workflow, with `max_pages`
    set to `2` for a quick first test. Then Actions → Daily poll → Run workflow.
@@ -117,7 +157,8 @@ After that, nothing needs to be run by hand. Tables are created automatically on
   * the last poll is older than 36 hours or didn't finish;
   * more than half the boards failed (an API changed or is blocking us);
   * open NYC jobs dropped more than 40% in one run;
-  * no NYC jobs are stored even though boards report some.
+  * no NYC jobs are stored even though boards report some;
+  * the last classification run failed (for example, a bad API key).
 * **Run history** is kept in the `runs` table, with stats for every run.
 
 ## Being a good citizen
