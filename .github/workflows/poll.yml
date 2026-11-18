@@ -6,9 +6,12 @@ name: Daily poll
 
 on:
   schedule:
-    # 09:47 UTC daily (about 5am New York in winter, 4am in summer).
-    # Off the hour on purpose: GitHub delays jobs scheduled at :00.
+    # 09:47 UTC daily (4:47am New York in winter), plus 16:37 UTC as a backup in
+    # case GitHub skips the first one. The second run is cheap: boards checked
+    # earlier that day aren't due again. Off the hour on purpose: GitHub
+    # delays jobs scheduled at :00.
     - cron: "47 9 * * *"
+    - cron: "37 16 * * *"
   workflow_dispatch:
     inputs:
       limit:
