@@ -4,8 +4,8 @@
 import { loadOwnProfile, supabaseServer } from "../supabase/server";
 import { whyBlurb } from "../why.mjs";
 import { AUTH_ENABLED } from "../supabase/env";
-import { searchJobs } from "./supabase";
-import type { JobPage, JobQuery } from "../types";
+import { facetCounts, searchJobs } from "./supabase";
+import type { JobPage, JobQuery, JobSummary } from "../types";
 
 const cleanQuery = (q: string) => q.replace(/[,()*%\\:."']/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
 
@@ -55,7 +55,10 @@ export async function matchJobs(q: JobQuery): Promise<JobPage | null> {
   const ranked = (data ?? []) as Ranked[];
   // Reuse the regular search for job details and filter counts, then keep the ranked order.
   const ids = ranked.map((r) => String(r.id));
-  const details = ids.length ? await searchJobs({ ids, pageSize: ids.length }) : await searchJobs({ pageSize: 1 });
+  const [details, facets] = await Promise.all([
+    ids.length ? searchJobs({ ids, pageSize: ids.length }) : Promise.resolve({ jobs: [] as JobSummary[] }),
+    facetCounts(q),
+  ]);
   const byId = new Map(details.jobs.map((j) => [j.id, j]));
   const jobs = ranked
     .map((r) => {
@@ -65,5 +68,5 @@ export async function matchJobs(q: JobQuery): Promise<JobPage | null> {
       return { ...j, why: blurb || whyLine(r.reasons), summary: j.why, fit: r.fit == null ? null : Math.round(r.fit * 100) };
     })
     .filter((j): j is NonNullable<typeof j> => j !== null);
-  return { jobs, total: ranked.length ? Number(ranked[0].total) : 0, facets: details.facets };
+  return { jobs, total: ranked.length ? Number(ranked[0].total) : 0, facets };
 }

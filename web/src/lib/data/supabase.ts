@@ -59,6 +59,37 @@ interface SearchRow extends Row { mode: WorkMode; has_process: boolean; copies?:
 /** Characters that would break PostgREST's or=() filter syntax. */
 const cleanQuery = (q: string) => q.replace(/[,()*%\\:."']/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
 
+const EMPTY_FACETS = (): JobPage["facets"] => ({ role: [], ind: [], mode: [], lvl: [] });
+
+/**
+ * Filter counts under the current search and filters: each option's count is how
+ * many jobs match if it were also picked (other groups' picks apply; its own
+ * group's don't). Picked options always stay listed, even at 0.
+ */
+export async function facetCounts(q: JobQuery): Promise<JobPage["facets"]> {
+  const text = cleanQuery(q.q ?? "");
+  const skip = (q.excludeIds ?? []).filter((x) => /^\d+$/.test(x)).slice(0, 500).map(Number);
+  const { data, error } = await db().rpc("job_facet_counts", {
+    p_q: text || null,
+    p_role: q.role?.length ? q.role : null,
+    p_ind: q.ind?.length ? q.ind : null,
+    p_mode: q.mode?.length ? q.mode : null,
+    p_lvl: q.lvl?.length ? q.lvl : null,
+    p_process: !!q.process,
+    p_exclude: skip.length ? skip : null,
+  });
+  if (error) throw new Error("Couldn't load filters: " + error.message);
+  const facets = EMPTY_FACETS();
+  for (const f of (data ?? []) as { facet: keyof JobPage["facets"]; value: string; n: number }[]) {
+    if (facets[f.facet]) facets[f.facet].push({ value: f.value, n: f.n } as Facet);
+  }
+  for (const key of Object.keys(facets) as (keyof JobPage["facets"])[]) {
+    for (const v of q[key] ?? []) if (!facets[key].some((f) => f.value === v)) facets[key].push({ value: v, n: 0 } as Facet);
+    facets[key].sort((a, b) => b.n - a.n);
+  }
+  return facets;
+}
+
 export async function searchJobs(q: JobQuery): Promise<JobPage> {
   const size = Math.min(Math.max(q.pageSize ?? 20, 1), 50);
   const page = Math.max(q.page ?? 0, 0);
@@ -79,17 +110,11 @@ export async function searchJobs(q: JobQuery): Promise<JobPage> {
   query = q.sort === "pay"
     ? query.order("salary_max_annual", { ascending: false, nullsFirst: false }).order("salary_min_annual", { ascending: false, nullsFirst: false })
     : query.order("first_seen_at", { ascending: false }).order("id", { ascending: false });
-  const [{ data, error, count }, facetRes] = await Promise.all([
+  const [{ data, error, count }, facets] = await Promise.all([
     query.range(page * size, page * size + size - 1),
-    db().from("job_facets").select("facet, value, n"),
+    q.ids?.length ? Promise.resolve(EMPTY_FACETS()) : facetCounts(q),
   ]);
   if (error) throw new Error("Couldn't load jobs: " + error.message);
-  if (facetRes.error) throw new Error("Couldn't load filters: " + facetRes.error.message);
-  const facets: JobPage["facets"] = { role: [], ind: [], mode: [], lvl: [] };
-  for (const f of (facetRes.data ?? []) as { facet: keyof JobPage["facets"]; value: string; n: number }[]) {
-    if (facets[f.facet]) facets[f.facet].push({ value: f.value, n: f.n } as Facet);
-  }
-  Object.values(facets).forEach((list) => list.sort((a, b) => b.n - a.n));
   const jobs = ((data ?? []) as unknown as SearchRow[]).map((r) => ({
     ...toSummary({ ...r, work_mode: r.mode }), process: r.has_process, skills: parse<string[]>(r.skills) ?? [], copies: r.copies ?? 1,
   }));
