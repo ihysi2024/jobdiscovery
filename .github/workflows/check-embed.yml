@@ -1,0 +1,53 @@
+name: Check embeddings match
+
+# The web app makes profile embeddings in the browser (transformers.js); the job
+# pipeline makes job embeddings in Python (fastembed). Matching compares the two,
+# so they must agree. This embeds the same texts both ways and compares.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["web/src/lib/embed.mjs", "jobdiscovery/embed.py"]
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: pip install -q fastembed
+      - run: npm ci
+        working-directory: web
+      - name: Compare
+        run: |
+          cat > /tmp/texts.json <<'JSON'
+          ["Software engineer with Python, PyTorch and computer vision experience in biotech",
+           "Registered Nurse, Cardiac ICU at Mount Sinai Hospital. Skills: ACLS, BLS, Epic charting",
+           "Barista and shift lead at a coffee shop in Brooklyn",
+           "Senior Sales Manager, enterprise accounts, CRM, outbound prospecting"]
+          JSON
+          node web/scripts/embed-parity.mjs "$(cat /tmp/texts.json)" > /tmp/js.json
+          python3 - <<'PY'
+          import json, math
+          from fastembed import TextEmbedding
+          texts = json.load(open("/tmp/texts.json"))
+          js = json.load(open("/tmp/js.json"))
+          py = [list(v) for v in TextEmbedding("BAAI/bge-small-en-v1.5").embed(texts)]
+          cos = lambda a, b: sum(x * y for x, y in zip(a, b)) / (math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b)))
+          same = [cos(a, b) for a, b in zip(js, py)]
+          for t, c in zip(texts, same):
+              print(f"{c:.4f}  {t[:60]}")
+          cross = cos(js[0], py[1])
+          print(f"different texts for reference: {cross:.4f}")
+          assert len(js[0]) == len(py[0]) == 384, "dimension mismatch"
+          assert min(same) > 0.99, f"browser and pipeline embeddings disagree (min cosine {min(same):.4f})"
+          print("OK: browser and pipeline embeddings agree")
+          PY
