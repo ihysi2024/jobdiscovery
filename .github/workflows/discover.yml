@@ -1,0 +1,70 @@
+name: Weekly discovery
+
+# Searches the latest Common Crawl indexes for new employer boards.
+# New boards are saved as they're found and get polled by the next daily run.
+
+on:
+  schedule:
+    # Sundays 13:23 UTC.
+    - cron: "23 13 * * 0"
+  workflow_dispatch:
+    inputs:
+      crawls:
+        description: "How many recent crawls to search"
+        required: false
+        default: "2"
+      max_pages:
+        description: "Cap index pages per pattern (blank = no cap; try 2 for a quick test)"
+        required: false
+        default: ""
+
+concurrency:
+  group: discover
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      JOBDISCOVERY_CONTACT: ${{ vars.JOBDISCOVERY_CONTACT }}
+      ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install ".[postgres]"
+
+      - name: Check configuration
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Add a DATABASE_URL repository secret (see README: Deploying)."
+            exit 1
+          fi
+
+      - name: Discover boards
+        # The Common Crawl index is slow and rate-limited. Progress is saved
+        # page by page, so a run that hits the time limit still keeps its work.
+        env:
+          CRAWLS: ${{ inputs.crawls }}
+          MAX_PAGES: ${{ inputs.max_pages }}
+        run: |
+          [[ "$CRAWLS" =~ ^[0-9]+$ ]] || CRAWLS=2
+          ARGS="--crawls $CRAWLS --max-minutes 300"
+          if [[ "$MAX_PAGES" =~ ^[0-9]+$ ]]; then ARGS="$ARGS --max-pages $MAX_PAGES"; fi
+          jobdiscovery discover $ARGS
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '```'
+            jobdiscovery report || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
