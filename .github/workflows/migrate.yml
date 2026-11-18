@@ -50,4 +50,6 @@ jobs:
             -c "select (select count(*) from profiles) as profiles, (select count(*) from preferences) as preferences, (select count(*) from job_feedback) as feedback, (select count(*) from tracked_jobs) as tracked, (select count(*) from plans) as plans" \
             -c "select extversion as pgvector from pg_extension where extname = 'vector'" \
             -c "select (select count(*) from profiles where embedding is not null) as profiles_with_embedding" \
-            -c "\\timing on" -c "select count(*) as ranked_rows, max(total) as total, round(max(score)::numeric, 3) as top_score from match_jobs(p_limit => 50)"
+            -c "\\timing on" -c "select count(*) as ranked_rows, max(total) as total, round(max(score)::numeric, 3) as top_score from match_jobs(p_limit => 50)" \
+            -c "select facet, count(*) as options, sum(n) as jobs from job_facet_counts() group by 1 order by 1" \
+            -c "select facet, count(*) as options, sum(n) as jobs from job_facet_counts(p_mode => array['hybrid']) group by 1 order by 1"
