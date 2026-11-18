@@ -34,3 +34,17 @@ jobs:
             if [[ "$code" =~ ^20[06]$ ]] && [ "$rows" != "[]" ]; then echo "::error::$t is readable with the public key"; fail=1; fi
           done
           exit $fail
+
+      - name: Google sign-in is set up
+        run: |
+          back="https://jobdiscovery-navy.vercel.app/auth/callback"
+          out=$(curl -s -o /tmp/auth -w "%{http_code} %{redirect_url}" -H "apikey: $KEY" \
+                "$URL/auth/v1/authorize?provider=google&redirect_to=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=''))" "$back")")
+          echo "authorize -> $out"
+          head -c 300 /tmp/auth; echo
+          loc=${out#* }
+          case "$loc" in
+            https://accounts.google.com/*)
+              echo "Redirects to Google. Client: $(python3 -c "import urllib.parse,sys;q=urllib.parse.parse_qs(urllib.parse.urlparse(sys.argv[1]).query);print(q.get('client_id',['?'])[0][:24]+'…', q.get('redirect_uri'))" "$loc")" ;;
+            *) echo "::error::Supabase doesn't send sign-in to Google yet (is the Google provider on and saved?)"; exit 1 ;;
+          esac
