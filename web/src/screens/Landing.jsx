@@ -116,8 +116,8 @@ export default function Landing({ count, next, error }) {
           <div style={{ maxWidth: "1120px", margin: "0 auto", padding: "72px 40px",
             display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "40px" }}>
             {STEPS.map((s) => (
-              <div key={s.n} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <div style={{ width: "40px", height: "40px", borderRadius: "20px", background: C.plumSoft, color: C.plum,
+              <div key={s.n} className="step" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div className="step-num" style={{ width: "40px", height: "40px", borderRadius: "20px", background: C.plumSoft, color: C.plum,
                   display: "flex", alignItems: "center", justifyContent: "center", fontFamily: serif, fontSize: "22px" }}>
                   {s.n}
                 </div>

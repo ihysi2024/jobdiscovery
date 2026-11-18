@@ -167,7 +167,7 @@ export default class MyJobs extends React.Component {
 </div>
 {" "}
 {(c.cards || []).map((k, k$i1) => (<React.Fragment key={k$i1}>
-<article draggable="true" onDragStart={k.dragStart} onDragEnd={k.dragEnd} style={{ background: "#FFFFFF", border: "1px solid #EFE9D8", borderRadius: "12px", padding: "16px", display: "flex", flexDirection: "column", gap: "10px", cursor: "grab" }}>
+<article className="lift grab" draggable="true" onDragStart={k.dragStart} onDragEnd={k.dragEnd} style={{ background: "#FFFFFF", border: "1px solid #EFE9D8", borderRadius: "12px", padding: "16px", display: "flex", flexDirection: "column", gap: "10px", cursor: "grab" }}>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
 <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
 {(k.isFocus) ? (<>

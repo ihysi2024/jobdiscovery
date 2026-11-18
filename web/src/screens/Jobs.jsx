@@ -243,15 +243,15 @@ export default class Jobs extends React.Component {
 </div>
 </>) : null}
 {" "}
-<div style={{ display: "flex", gap: "12px", alignItems: "flex-start", padding: "22px 4px", borderBottom: "1px solid #EFE9D8" }}>
+<div className="job-row" style={{ display: "flex", gap: "12px", alignItems: "flex-start", padding: "22px 12px", margin: "0 -8px", borderRadius: "14px", borderBottom: "1px solid #EFE9D8" }}>
 <Link href={j.href} style={{ flex: "1", minWidth: "0", display: "flex", gap: "20px", textDecoration: "none", color: "#2A2028" }}>
-<div style={{ width: "44px", height: "44px", flex: "none", borderRadius: "10px", background: "#F7F2E4", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "600", color: "#4D444B" }}>
+<div className="job-mono" style={{ width: "44px", height: "44px", flex: "none", borderRadius: "10px", background: "#F7F2E4", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "600", color: "#4D444B" }}>
 {j.mono}
 </div>
 {" "}
 <div style={{ flex: "1", minWidth: "0", display: "flex", flexDirection: "column", gap: "6px" }}>
 <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "8px 16px" }}>
-<div style={{ fontSize: "16px", fontWeight: "600" }}>
+<div className="job-title" style={{ fontSize: "16px", fontWeight: "600" }}>
 {j.title}
 </div>
 {" "}

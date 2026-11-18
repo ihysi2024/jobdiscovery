@@ -1,3 +1,80 @@
 html, body { margin: 0; }
 body { font-family: Inter, system-ui, sans-serif; color: #2a2028; }
 *:focus-visible { outline: 2px solid #7a3e6e; outline-offset: 2px; }
+
+/* ---- Hover and press feedback, shared by every screen ----
+   Screens use inline styles, so rules that change a color or border they set
+   need !important; motion and shadows don't. */
+
+button, a, input, textarea, select, article, tr, .job-row, .job-title, .job-mono, .step-num {
+  transition: transform 160ms ease, box-shadow 200ms ease, filter 160ms ease,
+    background-color 160ms ease, border-color 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+/* Buttons and pill links lift a touch and darken slightly; pressing pushes them back. */
+button:not(:disabled), a[style*="border-radius"] { cursor: pointer; }
+button:not(:disabled):hover,
+a[style*="height:52px"]:hover, a[style*="height:44px"]:hover {
+  filter: brightness(0.95);
+  transform: translateY(-1px);
+}
+button:not(:disabled):active,
+a[style*="height:52px"]:active, a[style*="height:44px"]:active {
+  filter: brightness(0.9);
+  transform: translateY(0) scale(0.98);
+}
+button:disabled { cursor: default; }
+
+/* Option chips that aren't chosen yet get a plum edge on hover. */
+button[aria-pressed="false"]:not(:disabled):hover { border-color: #b47fa6 !important; }
+
+/* Round icon buttons (like / pass, close) grow instead of lifting. */
+button[aria-label="Interested"]:hover, button[aria-label="Not for me"]:hover, button[aria-label="Close"]:hover {
+  transform: scale(1.06);
+}
+button[aria-label="Interested"]:active, button[aria-label="Not for me"]:active { transform: scale(0.96); }
+
+/* Text links: underline on hover. */
+a:not([style*="border-radius"]):hover { text-decoration: underline !important; text-underline-offset: 3px; }
+
+/* Job list rows. */
+.job-row:hover { background: #fbf6fa; }
+.job-row a:hover { text-decoration: none !important; }
+.job-row:hover .job-title { color: #7a3e6e; }
+.job-row:hover .job-mono { background: #f3e6ef !important; color: #5e2a54 !important; }
+
+/* Cards you can pick up or act on. */
+.lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 2px 4px rgba(42, 32, 40, 0.06), 0 18px 40px rgba(42, 32, 40, 0.12) !important;
+}
+.grab { cursor: grab; }
+.grab:active { cursor: grabbing; }
+.pick-card { transition: transform 220ms ease, box-shadow 220ms ease; }
+.pick-card:hover { box-shadow: 0 2px 4px rgba(42, 32, 40, 0.06), 0 22px 48px rgba(42, 32, 40, 0.14) !important; }
+
+/* Table rows and side lists. */
+.row-hover:hover { background: #fbf6fa; }
+.nav-item[aria-pressed="false"]:hover { background: #f7f0f4 !important; }
+[role="menuitem"]:hover { background: #f7f2e4 !important; text-decoration: none !important; filter: none; transform: none; }
+
+/* Fields. */
+input[type="text"]:hover, input[type="email"]:hover, input[type="search"]:hover, input:not([type]):hover,
+textarea:hover, select:hover { border-color: #cdb8c8 !important; }
+input[type="text"]:focus, input[type="email"]:focus, input[type="search"]:focus, input:not([type]):focus,
+textarea:focus, select:focus { border-color: #7a3e6e !important; outline: none; box-shadow: 0 0 0 3px rgba(122, 62, 110, 0.15); }
+
+/* Checkbox rows in filters. */
+label:has(> input[type="checkbox"]) { cursor: pointer; }
+label:has(> input[type="checkbox"]):hover { color: #5e2a54; }
+
+/* Resume drop zone. */
+label[for="resume"]:hover { border-color: #b47fa6 !important; background: #fdf8fb !important; }
+
+/* Landing page steps. */
+.step:hover .step-num { background: #7a3e6e !important; color: #ffffff !important; transform: scale(1.08); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+  button:hover, a:hover, .lift:hover, .step:hover .step-num, button:active, a:active { transform: none !important; }
+}

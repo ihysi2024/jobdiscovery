@@ -125,7 +125,7 @@ class OnboardingMarket extends React.Component {
                     const r = roleRow(lane);
                     const inds = topIndustries(lane);
                     return (
-                      <article key={lane} style={{ background: "#FFFFFF", borderRadius: "28px", padding: "28px", boxShadow: "0 1px 2px rgba(42,32,40,0.06), 0 12px 32px rgba(42,32,40,0.07)", display: "flex", flexDirection: "column", gap: "18px" }}>
+                      <article key={lane} className="lift" style={{ background: "#FFFFFF", borderRadius: "28px", padding: "28px", boxShadow: "0 1px 2px rgba(42,32,40,0.06), 0 12px 32px rgba(42,32,40,0.07)", display: "flex", flexDirection: "column", gap: "18px" }}>
                         <h2 style={{ margin: 0, fontFamily: serif, fontWeight: 400, fontSize: "32px", lineHeight: 1.08 }}>{lane}</h2>
                         <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                           <div><dt style={{ fontSize: "13px", color: C.muted }}>NYC openings</dt><dd style={{ margin: "4px 0 0", fontSize: "22px", fontWeight: 600 }}>{num(r && r.openings)}</dd></div>
@@ -168,7 +168,7 @@ class OnboardingMarket extends React.Component {
                   {[{ industry: null, openings: total ? total.openings : 0 }, ...industries].map((r) => {
                     const on = ind === r.industry;
                     return (
-                      <button key={r.industry || "all"} type="button" onClick={() => this.setState({ ind: r.industry })} aria-pressed={on} style={{
+                      <button key={r.industry || "all"} className="nav-item" type="button" onClick={() => this.setState({ ind: r.industry })} aria-pressed={on} style={{
                         display: "flex", flexDirection: "column", gap: "6px", padding: "10px 12px", borderRadius: "12px", textAlign: "left", cursor: "pointer",
                         border: "none", background: on ? "#F3E6EF" : "transparent", color: C.ink, font: "inherit",
                       }}>
@@ -196,7 +196,7 @@ class OnboardingMarket extends React.Component {
                         const fromPicks = liked.includes(r.role);
                         const on = added.includes(r.role);
                         return (
-                          <tr key={r.role} style={{ borderTop: "1px solid #F3EFE2" }}>
+                          <tr key={r.role} className="row-hover" style={{ borderTop: "1px solid #F3EFE2" }}>
                             <td style={{ padding: "12px 8px 12px 0", fontWeight: 500 }}>{r.role}</td>
                             <td style={{ padding: "12px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{num(r.openings)}</td>
                             <td style={{ padding: "12px 8px", color: r.withPay >= MIN_PAY_SAMPLE ? C.ink : C.muted }}>{payText(r)}</td>

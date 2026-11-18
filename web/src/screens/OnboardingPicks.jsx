@@ -133,7 +133,7 @@ export default class OnboardingPicks extends React.Component {
 {" "}
 <div style={{ position: "absolute", top: "10px", left: "16px", right: "16px", height: "60px", borderRadius: "28px", background: "#F5F1E6" }} aria-hidden="true" />
 {" "}
-<article style={{ position: "relative", background: "#FFFFFF", borderRadius: "28px", padding: "32px", boxShadow: "0 1px 2px rgba(42,32,40,0.06), 0 16px 40px rgba(42,32,40,0.10)", display: "flex", flexDirection: "column", gap: "20px" }}>
+<article className="pick-card" style={{ position: "relative", background: "#FFFFFF", borderRadius: "28px", padding: "32px", boxShadow: "0 1px 2px rgba(42,32,40,0.06), 0 16px 40px rgba(42,32,40,0.10)", display: "flex", flexDirection: "column", gap: "20px" }}>
 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
 <div style={{ width: "56px", height: "56px", borderRadius: "16px", background: "#FFFDF5", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "600", fontSize: "18px", color: "#3D343B" }}>
 {vm.card.mono}
