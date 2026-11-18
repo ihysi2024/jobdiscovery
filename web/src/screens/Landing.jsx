@@ -1,6 +1,7 @@
 "use client";
 // Landing page: what aligned is, and sign in with Google.
 import React from "react";
+import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { AUTH_ENABLED } from "@/lib/supabase/env";
 
@@ -142,6 +143,10 @@ export default function Landing({ count, next, error }) {
         justifyContent: "space-between", gap: "12px", fontSize: "13px", color: C.muted }}>
         <span>aligned · New York City</span>
         <span>Job details come from employers' own career pages and may change.</span>
+        <span style={{ display: "flex", gap: "16px" }}>
+          <Link href="/privacy" style={{ color: C.muted }}>Privacy</Link>
+          <Link href="/terms" style={{ color: C.muted }}>Terms</Link>
+        </span>
       </footer>
     </div>
   );
