@@ -9,13 +9,13 @@ import type { JobPage, JobQuery } from "../types";
 
 const cleanQuery = (q: string) => q.replace(/[,()*%\\:."']/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
 
-/** Turn ranking reasons into the one-line "why you might be interested"; a stretch warning goes last. */
+/** Turn ranking reasons into a one-line summary: the best two reasons, then the biggest caveat. */
 export function whyLine(reasons: string[]): string {
-  const caveat = reasons.find((r) => r.startsWith("A stretch") || r.startsWith("Likely out of reach"));
-  const good = reasons.filter((r) => r !== caveat);
-  // The level reason is useful but less interesting than the others; keep it if there's room.
-  const ordered = [...good.filter((r) => r !== "Right level for your experience"), ...good.filter((r) => r === "Right level for your experience")];
-  return [...ordered.slice(0, caveat ? 2 : 3), ...(caveat ? [caveat] : [])].join(" · ");
+  const isCaveat = (r: string) => r.startsWith("A stretch") || r.startsWith("Likely out of reach") || r.startsWith("Missing requirements");
+  const rank = (r: string) => (r.startsWith("Meets") ? 0 : r.startsWith("Close to") ? 1 : r.startsWith("Like roles") ? 2 : r.startsWith("In your direction") ? 3 : r === "Right level for your experience" ? 6 : 4);
+  const good = reasons.filter((r) => !isCaveat(r)).sort((x, y) => rank(x) - rank(y));
+  const caveats = reasons.filter(isCaveat).sort((x, y) => (x.startsWith("Likely") ? 0 : x.startsWith("Missing") ? 1 : 2) - (y.startsWith("Likely") ? 0 : y.startsWith("Missing") ? 1 : 2));
+  return [...good.slice(0, caveats.length ? 2 : 3), ...caveats.slice(0, 1)].join(" · ");
 }
 
 interface Ranked { id: number; score: number; fit: number | null; reasons: string[]; detail: Record<string, unknown>; total: number }

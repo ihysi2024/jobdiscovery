@@ -41,3 +41,11 @@ test("company links: website only when the posting is on their own site", async 
   assert.deepEqual(links.map((l) => l.label), ["Original posting", "LinkedIn", "Glassdoor", "Levels.fyi", "Recent news", "More roles at Oscar Health"]);
   assert.match(links[1].href, /keywords=Oscar%20Health$/);
 });
+
+test("requirements: all met, most met, and missing", () => {
+  const job = { title: "x", summary: "", skills: [] };
+  assert.match(whyBlurb({ ...base, req_total: 5, req_met: 5, missing: [] }, job, ira), /You meet all 5 of its listed requirements\./);
+  assert.match(whyBlurb({ ...base, req_total: 6, req_met: 5, missing: ["Spark"] }, job, ira), /You meet 5 of its 6 listed requirements; it also asks for Spark\./);
+  assert.match(whyBlurb({ ...base, req_total: 6, req_met: 1, missing: ["Go", "Terraform", "Rust"], degree_ok: 0, degree_required: "masters" }, job, ira),
+    /It asks for Go, Terraform and Rust, which aren't on your profile\./);
+});

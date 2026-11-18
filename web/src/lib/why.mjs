@@ -56,6 +56,16 @@ export function whyBlurb(d, job, profile) {
   }
   if (first) out.push(first + ".");
 
+  // 1b. What it asks for that they have, or don't.
+  const DEGREE = { high_school: "a high school diploma", associate: "an associate degree", bachelors: "a bachelor's degree", masters: "a master's degree", phd: "a doctorate", professional: "a professional degree" };
+  const missing = [...(d.missing || [])];
+  if (d.degree_ok === 0 && DEGREE[d.degree_required]) missing.push(DEGREE[d.degree_required]);
+  if (d.req_total >= 2) {
+    if (d.req_met === d.req_total) out.push(`You meet all ${d.req_total} of its listed requirements.`);
+    else if (d.req_met / d.req_total >= 0.7) out.push(`You meet ${d.req_met} of its ${d.req_total} listed requirements${missing.length ? `; it also asks for ${and(missing.slice(0, 2))}` : ""}.`);
+    else if (missing.length) out.push(`It asks for ${and(missing.slice(0, 3))}, which ${missing.length === 1 ? "isn't" : "aren't"} on your profile.`);
+  }
+
   // 2. The priorities a posting can show.
   const extras = [];
   const pay = payRange(d.salary_min, d.salary_max);
