@@ -43,3 +43,9 @@ jobs:
               | psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q --single-transaction
           done
           psql "$DATABASE_URL" -c "select name, applied_at from app_migrations order by name"
+      - name: Database summary (counts only, no personal data)
+        run: |
+          psql "$DATABASE_URL" -c "select format_type(atttypid, atttypmod) as embedding_type from pg_attribute where attrelid = 'job_features'::regclass and attname = 'embedding'" \
+            -c "select count(*) as labeled, count(embedding) as with_embedding, count(distinct model) as models from job_features where processed_at is not null" \
+            -c "select (select count(*) from profiles) as profiles, (select count(*) from preferences) as preferences, (select count(*) from job_feedback) as feedback, (select count(*) from tracked_jobs) as tracked, (select count(*) from plans) as plans" \
+            -c "select extversion as pgvector from pg_extension where extname = 'vector'"
