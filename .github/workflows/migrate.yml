@@ -1,0 +1,45 @@
+name: Database migrations
+
+# Applies web/supabase/migrations/*.sql to the Supabase database in order, each
+# once, each in its own transaction. Runs when a migration file is pushed to
+# main, or by hand.
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/supabase/migrations/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Apply new migrations
+        run: |
+          [ -n "$DATABASE_URL" ] || { echo "::error::Add the DATABASE_URL repository secret."; exit 1; }
+          sudo apt-get install -y -qq postgresql-client > /dev/null 2>&1 || true
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q <<'SQL'
+          create table if not exists app_migrations (name text primary key, applied_at timestamptz not null default now());
+          alter table app_migrations enable row level security;
+          do $$ begin
+            if exists (select 1 from pg_roles where rolname = 'anon') then
+              revoke all on app_migrations from anon, authenticated;
+            end if;
+          end $$;
+          SQL
+          for f in $(ls web/supabase/migrations/*.sql | sort); do
+            name=$(basename "$f")
+            done=$(psql "$DATABASE_URL" -tA -c "select 1 from app_migrations where name = '$name'")
+            if [ "$done" = 1 ]; then echo "already applied: $name"; continue; fi
+            echo "applying: $name"
+            { cat "$f"; echo; echo "insert into app_migrations (name) values ('$name');"; } \
+              | psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q --single-transaction
+          done
+          psql "$DATABASE_URL" -c "select name, applied_at from app_migrations order by name"
