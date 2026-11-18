@@ -27,6 +27,11 @@ class OnboardingResume extends React.Component {
     }
   }
   clone(x) { return JSON.parse(JSON.stringify(x)); }
+  autosave() {
+    // Saved as soon as there's something worth keeping, not only on Continue.
+    if (!this.state.data.name.trim()) return;
+    saveProfile(this.state.data).catch((e) => this.setState({ saveError: e.message }));
+  }
   async onFile(file) {
     if (!file) return;
     this.setState({ status: 'reading', message: '', dragging: false });
@@ -53,9 +58,9 @@ class OnboardingResume extends React.Component {
       });
       try {
         const path = await uploadResume(file, kind);
-        this.setState({ data: { ...this.state.data, resumePath: path } });
+        this.setState({ data: { ...this.state.data, resumePath: path } }, () => this.autosave());
       } catch (e) {
-        this.setState({ message: e.message + " Your details are still filled in below." });
+        this.setState({ message: e.message + " Your details are still filled in below." }, () => this.autosave());
       }
     } catch (e) {
       this.setState({ status: 'error', message: e.message });
@@ -100,7 +105,7 @@ class OnboardingResume extends React.Component {
       save: () => {
         const nd = this.clone(this.state.draft);
         nd.skills = nd.skills.map((x) => x.trim()).filter(Boolean);
-        this.setState({ data: nd, draft: null, saveError: '' });
+        this.setState({ data: nd, draft: null, saveError: '' }, () => this.autosave());
       },
       setName: (ev) => upd((n) => { n.name = ev.target.value; }),
       setHeadline: (ev) => upd((n) => { n.headline = ev.target.value; }),

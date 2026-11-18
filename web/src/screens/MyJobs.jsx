@@ -1,31 +1,85 @@
 "use client";
 /* Ported from the mockup (MyJobs.dc.html). Layout and behavior match the design. */
 import React from "react";
-import UserMenu from "@/components/UserMenu";
+import AppHeader from "@/components/AppHeader";
+import { addByLink, findJobByUrl, listTracked, moveJob, setFocus } from "@/lib/tracker";
+import { loadPlan } from "@/lib/answers";
+
+function weekStart() {
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // Monday
+  return d;
+}
+
+function guessCompany(url) {
+  const host = (url || '').replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '');
+  const parts = host.split('.');
+  // boards.greenhouse.io/acme, jobs.lever.co/acme: the company is in the path
+  if (/greenhouse|lever|ashbyhq|smartrecruiters|workable|myworkdayjobs/.test(host)) {
+    const seg = (url.split('/')[3] || parts[0] || '').replace(/[-_]/g, ' ');
+    return seg ? seg.charAt(0).toUpperCase() + seg.slice(1) : '';
+  }
+  const name = (parts[0] === 'jobs' || parts[0] === 'careers' || parts[0] === 'boards') ? parts[1] : parts[0];
+  return name ? name.charAt(0).toUpperCase() + name.slice(1) : '';
+}
 import Link from "next/link";
 
-export default class MyJobs extends React.Component {
+const fmtDay = (iso) => { try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch (e) { return ''; } };
+const STATUS_WORD = { liked: 'Liked', applied: 'Applied', interviewing: 'Interviewing', offer: 'Offer', closed: 'Closed' };
+
+function toCard(t) {
+  const when = t.status === 'applied' && t.applied_at ? t.applied_at : t.updated_at || t.created_at;
+  return {
+    id: t.id, col: t.status, title: t.title || 'Untitled role', company: t.company || '',
+    postingId: t.posting_id != null ? String(t.posting_id) : null, url: t.url || '',
+    status: (t.posting_id == null && t.status === 'liked' ? 'Added from a link' : STATUS_WORD[t.status]) + ' · ' + fmtDay(when),
+    appliedAt: t.applied_at, focus: !!t.focus, backup: !!t.backup,
+  };
+}
+
+/** Applications per week the plan asks for (same pace as the plan step), or null without a plan date. */
+function weeklyTarget(plan) {
+  if (!plan || !plan.offer_by) return null;
+  const weeks = Math.max(1, Math.ceil((new Date(plan.offer_by + 'T00:00:00') - new Date()) / (7 * 864e5)));
+  return Math.min(15, Math.max(3, Math.round(90 / weeks)));
+}
+
+class MyJobs extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      focus: 'pb', backup: 'ng', over: null, addOpen: false, url: '', addCol: 'liked', nextId: 1,
-      cards: [
-        { id: 'pb', col: 'liked', title: 'Machine Learning Engineer, Imaging', company: 'Parallax Bio' },
-        { id: 'ng', col: 'liked', title: 'ML Engineer, Sequencing', company: 'Northlight Genomics' },
-        { id: 'cv', col: 'liked', title: 'Software Engineer, Data Platform', company: 'Cellvue' },
-        { id: 'th', col: 'applied', title: 'Applied Scientist, Clinical NLP', company: 'Tessellate Health', status: 'Confirmation found in inbox · Nov 10' },
-        { id: 'ac', col: 'applied', title: 'Senior Software Engineer, Care Tools', company: 'Ardent Care', status: 'Confirmation found in inbox · Nov 12' },
-        { id: 'ld', col: 'applied', title: 'ML Engineer, Radiology', company: 'Lumen Diagnostics', status: 'Found in inbox · applied outside aligned' },
-        { id: 'qh', col: 'interviewing', title: 'Computer Vision Engineer', company: 'Quarry Health', status: 'Technical screen Thu, Nov 20 · from scheduling email' },
-        { id: 'wl', col: 'closed', title: 'ML Engineer', company: 'Ward Labs', status: 'Not moving forward · Nov 8' }
-      ]
+      focus: null, backup: null, over: null, addOpen: false, url: '', addTitle: '', addCompany: '', addCol: 'liked',
+      cards: [], loading: true, error: '', adding: false, target: null
     };
   }
-  move(id, col, status) {
-    const cards = this.state.cards.map((c) => c.id === id ? Object.assign({}, c, { col, status: status !== undefined ? status : (c.col === col ? c.status : 'Moved by you · today') }) : c);
+  async componentDidMount() {
+    try {
+      const [rows, plan] = await Promise.all([listTracked(), loadPlan().then((r) => r.row).catch(() => null)]);
+      const cards = rows.map(toCard);
+      const f = cards.find((c) => c.focus);
+      const b = cards.find((c) => c.backup);
+      this.setState({ cards, focus: f ? f.id : null, backup: b ? b.id : null, loading: false, target: weeklyTarget(plan) });
+    } catch (e) {
+      this.setState({ loading: false, error: e.message });
+    }
+  }
+  move(id, col) {
+    const before = this.state.cards;
+    const now = new Date().toISOString();
+    const cards = before.map((c) => c.id === id && c.col !== col
+      ? Object.assign({}, c, { col, status: STATUS_WORD[col] + ' · ' + fmtDay(now), appliedAt: col === 'applied' ? now : c.appliedAt })
+      : c);
     const patch = { cards, over: null };
     if (col === 'closed' && this.state.focus === id) { patch.focus = null; patch.backup = null; }
     this.setState(patch);
+    if (before.find((c) => c.id === id && c.col !== col)) {
+      moveJob(id, col).catch((e) => this.setState({ cards: before, error: e.message }));
+    }
+  }
+  focusOn(id) {
+    const prev = { focus: this.state.focus, backup: this.state.backup };
+    this.setState({ focus: id, backup: null });
+    setFocus(id, null).catch((e) => this.setState({ ...prev, error: e.message }));
   }
   renderVals() {
     const s = this.state;
@@ -35,12 +89,14 @@ export default class MyJobs extends React.Component {
     const cols = COLS.map(([key, name]) => {
       const cards = s.cards.filter((c) => c.col === key).map((c) => Object.assign({}, c, {
         isFocus: c.id === s.focus, isBackup: !!s.focus && c.id === s.backup,
-        inLiked: c.col === 'liked', canFocus: c.id !== s.focus,
+        inLiked: c.col === 'liked', canFocus: c.id !== s.focus && c.col !== 'closed',
+        href: c.postingId ? '/jobs/' + c.postingId : (c.url || '#'), external: !c.postingId && !!c.url,
+        applyHref: c.url || (c.postingId ? '/jobs/' + c.postingId : '#'), applyLabel: c.url ? 'Apply on company site ↗' : 'View the posting',
         dragStart: (ev) => { this.dragId = c.id; try { ev.dataTransfer.setData('text/plain', c.id); ev.dataTransfer.effectAllowed = 'move'; } catch (e) {} },
         dragEnd: () => { this.dragId = null; if (this.state.over) this.setState({ over: null }); },
         moveTo: (ev) => this.move(c.id, ev.target.value),
-        markApplied: () => this.move(c.id, 'applied', 'Marked as applied by you · today'),
-        setFocus: () => this.setState({ focus: c.id, backup: null })
+        markApplied: () => this.move(c.id, 'applied'),
+        setFocus: () => this.focusOn(c.id)
       }));
       const isOver = s.over === key;
       return {
@@ -56,26 +112,40 @@ export default class MyJobs extends React.Component {
     const urlOk = /^https?:\/\/[^\s.]+\.[^\s]+/.test(url);
     return {
       cols,
-      appliedCount: s.cards.filter((c) => c.col === 'applied').length,
+      appliedCount: s.cards.filter((c) => c.appliedAt && new Date(c.appliedAt) >= weekStart()).length,
+      target: s.target, hasTarget: !!s.target, loading: s.loading, error: s.error, adding: s.adding,
+      emptyBoard: !s.loading && !s.cards.length,
       hasFocus: !!focusCard,
       focusCompany: focusCard ? focusCard.company : '',
       focusText: focusCard
-        ? 'Your plan now centers on this role: reach out to its contacts and apply this week.' + (backupCard ? ' ' + backupCard.company + ' is kept as a backup and other new applications are paused.' : ' Other new applications are paused.')
+        ? 'Put your effort here this week: tailor your application and apply. ' + (backupCard ? backupCard.company + ' is your backup.' : 'End focus whenever you want to spread out again.')
         : '',
-      endFocus: () => this.setState({ focus: null, backup: null }),
+      endFocus: () => {
+        const prev = { focus: s.focus, backup: s.backup };
+        this.setState({ focus: null, backup: null });
+        setFocus(null, null).catch((e) => this.setState({ ...prev, error: e.message }));
+      },
       addOpen: s.addOpen,
-      openAdd: () => this.setState({ addOpen: true, url: '', addCol: 'liked' }),
+      openAdd: () => this.setState({ addOpen: true, url: '', addTitle: '', addCompany: '', addCol: 'liked' }),
       closeAdd: () => this.setState({ addOpen: false }),
       url: s.url, setUrl: (ev) => this.setState({ url: ev.target.value }),
+      addTitle: s.addTitle, setAddTitle: (ev) => this.setState({ addTitle: ev.target.value }),
+      addCompany: s.addCompany, setAddCompany: (ev) => this.setState({ addCompany: ev.target.value }),
+      companyGuess: guessCompany(url),
       urlOk, urlNotOk: !urlOk, urlBad: url.length > 8 && !urlOk,
       addCol: s.addCol, setAddCol: (ev) => this.setState({ addCol: ev.target.value }),
-      addJob: () => {
-        if (!urlOk) return;
-        let host = url.replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '').replace(/^(jobs|careers|boards)\./, '');
-        const company = host.split('.')[0];
-        const nice = company.charAt(0).toUpperCase() + company.slice(1);
-        const card = { id: 'x' + s.nextId, col: s.addCol, title: 'Role from ' + nice, company: nice, status: 'Added from link · pulling details' };
-        this.setState({ cards: s.cards.concat(card), nextId: s.nextId + 1, addOpen: false, url: '' });
+      addJob: async () => {
+        if (!urlOk || s.adding) return;
+        this.setState({ adding: true, error: '' });
+        try {
+          const found = await findJobByUrl(url).catch(() => null);
+          const company = s.addCompany.trim() || (found && found.company) || guessCompany(url);
+          const title = s.addTitle.trim() || (found && found.title) || ('Role at ' + company);
+          const row = await addByLink({ url, title, company, status: s.addCol, postingId: found && found.postingId });
+          this.setState({ cards: this.state.cards.concat(toCard(row)), addOpen: false, url: '', adding: false });
+        } catch (e) {
+          this.setState({ adding: false, error: e.message });
+        }
       }
     };
   }
@@ -85,23 +155,7 @@ export default class MyJobs extends React.Component {
     return (<>
 <style>{"\nbody{margin:0}\na{color:#7A3E6E}a:hover{color:#5E2A54}\ninput::placeholder{color:#7A7078}\nbutton:disabled{cursor:default}\n"}</style>
 <div style={{ position: "relative", minHeight: "100vh", background: "#F3E8F0", color: "#2A2028", fontFamily: "Inter, system-ui, sans-serif", fontSize: "14px" }}>
-<header style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "32px", padding: "16px 40px", borderBottom: "1px solid #EFE9D8" }}>
-<div style={{ fontFamily: "'Instrument Serif', serif", fontSize: "26px", letterSpacing: "-0.5px" }}>
-{"aligned"}
-</div>
-{" "}
-<nav style={{ display: "flex", gap: "24px", fontWeight: "500", flex: "1" }} aria-label="Main">
-<Link href="/jobs" style={{ textDecoration: "none", color: "#665D63", padding: "6px 0" }}>
-{"Jobs"}
-</Link>
-{" "}
-<Link href="/my-jobs" style={{ textDecoration: "none", color: "#2A2028", borderBottom: "2px solid #7A3E6E", padding: "6px 0" }}>
-{"My jobs"}
-</Link>
-</nav>
-{" "}
-<UserMenu />
-</header>
+<AppHeader active="my-jobs" />
 {" "}
 <div style={{ maxWidth: "1600px", margin: "0 auto", padding: "32px 24px 64px", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: "24px" }}>
 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "16px" }}>
@@ -111,19 +165,17 @@ export default class MyJobs extends React.Component {
 </h1>
 {" "}
 <p style={{ margin: "6px 0 0", color: "#665D63" }}>
-{"This week: "}
+{(vm.hasTarget) ? (<>{"This week: "}
 <strong style={{ color: "#2A2028", fontWeight: "500" }}>
-{vm.appliedCount}{" of 6"}
+{vm.appliedCount}{" of " + vm.target}
 </strong>
-{" applications in your plan · drag cards between columns to update them"}
+{" applications in your plan · "}</>) : null}
+{"Drag cards between columns to update them"}
 </p>
 </div>
 {" "}
 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px" }}>
-<span style={{ display: "inline-flex", alignItems: "center", gap: "8px", height: "36px", padding: "0 14px", borderRadius: "18px", background: "#F3E6EF", color: "#5E2A54", fontSize: "13px", fontWeight: "500" }}>
-<span style={{ width: "8px", height: "8px", borderRadius: "4px", background: "#1E6B45" }} aria-hidden="true" />
-{"Gmail connected · reading hiring emails only "}
-</span>
+
 {" "}
 <button type="button" onClick={vm.openAdd} style={{ height: "40px", padding: "0 16px", borderRadius: "10px", border: "1px solid #E6DED0", background: "#FFFFFF", font: "500 14px Inter, sans-serif", color: "#2A2028", cursor: "pointer" }}>
 {"+ Add a job from elsewhere"}
@@ -152,7 +204,11 @@ export default class MyJobs extends React.Component {
 </section>
 </>) : null}
 {" "}
-<div style={{ overflowX: "auto" }}>
+{(vm.error) ? (<p role="alert" style={{ margin: "0 0 12px", padding: "10px 14px", borderRadius: "10px", background: "#FBEAEA", color: "#8A2A2A" }}>{vm.error}</p>) : null}
+{(vm.emptyBoard) ? (<div style={{ margin: "0 0 16px", padding: "20px 24px", borderRadius: "16px", background: "#FFF8D6", color: "#4A2141", lineHeight: 1.6 }}>
+{"Nothing here yet. Tap the heart on any job to save it to Liked, or add a job you found somewhere else."}{" "}<Link href="/jobs" style={{ fontWeight: 600 }}>{"Browse jobs →"}</Link>
+</div>) : null}
+<div style={{ overflowX: "auto", opacity: vm.loading ? 0.5 : 1 }}>
 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(300px, 1.25fr)) repeat(2, minmax(220px, 0.75fr))", gap: "12px", alignItems: "stretch" }}>
 {(vm.cols || []).map((c, c$i0) => (<React.Fragment key={c$i0}>
 <section onDragOver={c.over} onDragLeave={c.leave} onDrop={c.drop} aria-label={c.name} style={{ display: "flex", flexDirection: "column", gap: "10px", minHeight: "480px", padding: "8px", borderRadius: "14px", background: c.bg, outline: c.outline }}>
@@ -194,9 +250,11 @@ export default class MyJobs extends React.Component {
 </div>
 {" "}
 <div>
-<Link href="/jobs/sample" style={{ color: "#2A2028", fontWeight: "600", textDecoration: "none", lineHeight: "1.35" }}>
+{(k.external) ? (<a href={k.href} target="_blank" rel="noopener noreferrer" style={{ color: "#2A2028", fontWeight: "600", textDecoration: "none", lineHeight: "1.35" }}>
 {k.title}
-</Link>
+</a>) : (<Link href={k.href} style={{ color: "#2A2028", fontWeight: "600", textDecoration: "none", lineHeight: "1.35" }}>
+{k.title}
+</Link>)}
 {" "}
 <div style={{ marginTop: "2px", color: "#665D63" }}>
 {k.company}
@@ -206,8 +264,8 @@ export default class MyJobs extends React.Component {
 {(k.status) ? (<>
 <div style={{ display: "flex", gap: "6px", alignItems: "flex-start", fontSize: "13px", color: "#4D444B", lineHeight: "1.4" }}>
 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#665D63" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ marginTop: "2px", flex: "none" }}>
-<rect x="3" y="5" width="18" height="14" rx="2" />
-<path d="m3 7 9 6 9-6" />
+<circle cx="12" cy="12" r="9" />
+<path d="M12 7v5l3 2" />
 </svg>
 {" "}
 <span>
@@ -218,8 +276,8 @@ export default class MyJobs extends React.Component {
 {" "}
 {(k.inLiked) ? (<>
 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-<a href="#" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "40px", borderRadius: "10px", background: "#7A3E6E", color: "#FFFFFF", fontWeight: "600", textDecoration: "none" }}>
-{"Apply on company site ↗"}
+<a href={k.applyHref} target={k.url ? "_blank" : undefined} rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "40px", borderRadius: "10px", background: "#7A3E6E", color: "#FFFFFF", fontWeight: "600", textDecoration: "none" }}>
+{k.applyLabel}
 </a>
 {" "}
 <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
@@ -286,7 +344,7 @@ export default class MyJobs extends React.Component {
 </div>
 {" "}
 <p style={{ margin: "0", color: "#665D63", lineHeight: "1.5" }}>
-{"Paste the link to the posting. We'll pull in the title, company and details, and track it with the rest of your jobs."}
+{"Paste the link to the posting. If it's a job we already have, we'll fill in the details; otherwise add the title and company yourself."}
 </p>
 {" "}
 <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontWeight: "500" }}>
@@ -300,6 +358,16 @@ export default class MyJobs extends React.Component {
 </div>
 </>) : null}
 {" "}
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+<label style={{ display: "flex", flexDirection: "column", gap: "6px", fontWeight: "500" }}>
+{"Job title (optional)"}
+<input type="text" value={vm.addTitle} onChange={vm.setAddTitle} placeholder="e.g. Office Manager" style={{ height: "44px", padding: "0 14px", border: "1px solid #E6DED0", borderRadius: "10px", font: "400 15px Inter, sans-serif", color: "#2A2028" }} />
+</label>
+<label style={{ display: "flex", flexDirection: "column", gap: "6px", fontWeight: "500" }}>
+{"Company (optional)"}
+<input type="text" value={vm.addCompany} onChange={vm.setAddCompany} placeholder={vm.companyGuess || "e.g. Acme"} style={{ height: "44px", padding: "0 14px", border: "1px solid #E6DED0", borderRadius: "10px", font: "400 15px Inter, sans-serif", color: "#2A2028" }} />
+</label>
+</div>
 <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontWeight: "500" }}>
 {"Where is it at? "}
 <select value={vm.addCol} onChange={vm.setAddCol} style={{ height: "44px", padding: "0 12px", border: "1px solid #E6DED0", borderRadius: "10px", background: "#FFFFFF", font: "400 14px Inter, sans-serif", color: "#2A2028" }}>
@@ -325,7 +393,7 @@ export default class MyJobs extends React.Component {
 {" "}
 {(vm.urlOk) ? (<>
 <button type="button" onClick={vm.addJob} style={{ height: "44px", padding: "0 20px", borderRadius: "10px", border: "none", background: "#7A3E6E", font: "600 14px Inter, sans-serif", color: "#FFFFFF", cursor: "pointer" }}>
-{"Add job"}
+{vm.adding ? "Adding…" : "Add job"}
 </button>
 </>) : null}
 {" "}
@@ -341,4 +409,8 @@ export default class MyJobs extends React.Component {
 </div>
 </>);
   }
+}
+
+export default function MyJobsPage(props) {
+  return <MyJobs {...props} />;
 }

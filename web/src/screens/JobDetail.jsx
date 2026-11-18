@@ -2,7 +2,8 @@
 /* Ported from the mockup (JobDetail.dc.html). Layout and behavior match the design. */
 import React from "react";
 import Link from "next/link";
-import { getUser, setUser } from "@/lib/user-store";
+import AppHeader from "@/components/AppHeader";
+import { likeJob, trackedPostingIds, unlikeJob } from "@/lib/tracker";
 
 export default class JobDetail extends React.Component {
   constructor(props) {
@@ -10,7 +11,7 @@ export default class JobDetail extends React.Component {
     this.state = { showFull: false };
   }
   componentDidMount() {
-    this.setState({ liked: getUser('liked', []).indexOf(this.props.job.id) >= 0 });
+    trackedPostingIds().then((ids) => this.setState({ liked: ids.has(this.props.job.id) })).catch(() => {});
   }
   renderVals() {
     const job = this.props.job;
@@ -19,12 +20,17 @@ export default class JobDetail extends React.Component {
     return {
       job, showFull, fullLabel: showFull ? 'Show less' : 'Read the full posting',
       toggleFull: () => this.setState({ showFull: !showFull }),
-      liked, likeLabel: liked ? 'Liked ' : 'Like',
-      toggleLike: () => {
-        const list = getUser('liked', []);
-        setUser('liked', liked ? list.filter((x) => x !== job.id) : list.concat(job.id));
-        this.setState({ liked: !liked });
+      liked, likeLabel: liked ? 'In My jobs' : 'Like',
+      toggleLike: async () => {
+        this.setState({ liked: !liked, likeError: '' });
+        try {
+          if (liked) await unlikeJob(job.id);
+          else await likeJob({ postingId: job.id, title: job.title, company: job.company, url: job.url });
+        } catch (e) {
+          this.setState({ liked, likeError: e.message });
+        }
       },
+      likeError: this.state.likeError || '',
       metaLine: ' · ' + job.loc + ' · ' + job.postedLabel,
       hasPay: !!job.payLabel, hasCompanyLine: !!job.companyLine,
       hasWhy: job.whyParas.length > 0,
@@ -46,25 +52,11 @@ export default class JobDetail extends React.Component {
     return (<>
 <style>{"\nbody{margin:0}\na{color:#7A3E6E}a:hover{color:#5E2A54}\n"}</style>
 <div style={{ minHeight: "100vh", background: "#FFFDF5", color: "#2A2028", fontFamily: "Inter, system-ui, sans-serif", fontSize: "14px" }}>
-<header style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "32px", padding: "16px 40px", borderBottom: "1px solid #EFE9D8" }}>
-<div style={{ fontFamily: "'Instrument Serif', serif", fontSize: "26px", letterSpacing: "-0.5px" }}>
-{"aligned"}
-</div>
-{" "}
-<nav style={{ display: "flex", gap: "24px", fontWeight: "500" }} aria-label="Main">
-<Link href="/jobs" style={{ textDecoration: "none", color: "#2A2028", borderBottom: "2px solid #7A3E6E", padding: "6px 0" }}>
-{"Jobs"}
-</Link>
-{" "}
-<Link href="/my-jobs" style={{ textDecoration: "none", color: "#665D63", padding: "6px 0" }}>
-{"My jobs"}
-</Link>
-</nav>
-</header>
+<AppHeader active="jobs" />
 {" "}
 <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "24px 40px 72px", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: "28px" }}>
 <Link href="/jobs" style={{ color: "#665D63", textDecoration: "none", fontWeight: "500" }}>
-{"← All matches"}
+{"← All jobs"}
 </Link>
 {" "}
 <section style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "24px", paddingBottom: "28px", borderBottom: "1px solid #EFE9D8" }}>
@@ -108,6 +100,7 @@ export default class JobDetail extends React.Component {
 </svg>
 {vm.likeLabel}
 </button>
+{(vm.likeError) ? (<span role="alert" style={{ color: "#8A2A2A", fontSize: "13px" }}>{vm.likeError}</span>) : null}
 </div>
 </section>
 {" "}

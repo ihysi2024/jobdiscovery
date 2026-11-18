@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { loadPreferences, savePreferences } from "@/lib/answers";
 import Link from "next/link";
 
+const KEYS = ['pri', 'ownPri', 'trade', 'modes', 'boroughs', 'skip'];  // answers that autosave
+
 class OnboardingPriorities extends React.Component {
   constructor(props) {
     super(props);
@@ -17,7 +19,8 @@ class OnboardingPriorities extends React.Component {
   }
   async componentDidMount() {
     try {
-      const { row } = await loadPreferences();
+      const { user, row } = await loadPreferences();
+      this.loaded = !!user;
       if (!row) return;
       this.setState({
         pri: row.priorities || [], ownPri: (row.priorities || []).filter((x) => x.startsWith('own:')), trade: row.tradeoffs || {},
@@ -31,16 +34,33 @@ class OnboardingPriorities extends React.Component {
     const s = this.state;
     this.setState({ saving: true, saveError: '' });
     try {
-      await savePreferences({
-        priorities: s.skip.pri ? null : s.pri,
-        tradeoffs: s.skip.trade ? null : s.trade,
-        work_modes: s.skip.loc ? null : s.modes,
-        nyc_areas: s.skip.loc ? null : s.boroughs
-      });
+      clearTimeout(this.saveTimer); this.saveTimer = null;
+      await this.persist();
       this.props.router.push('/onboarding/future');
     } catch (e) {
       this.setState({ saving: false, saveError: e.message });
     }
+  }
+  persist() {
+    const s = this.state;
+    return savePreferences({
+      priorities: s.skip.pri ? null : s.pri,
+      tradeoffs: s.skip.trade ? null : s.trade,
+      work_modes: s.skip.loc ? null : s.modes,
+      nyc_areas: s.skip.loc ? null : s.boroughs
+    });
+  }
+  componentDidUpdate(_, prev) {
+    if (!this.loaded || !KEYS.some((k) => prev[k] !== this.state[k])) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.persist().catch((e) => this.setState({ saveError: e.message }));
+    }, 800);
+  }
+  componentWillUnmount() {
+    // Leaving the page (Back, or a link) saves anything not yet saved.
+    if (this.saveTimer) { clearTimeout(this.saveTimer); this.persist().catch(() => {}); }
   }
   renderVals() {
     const s = this.state;

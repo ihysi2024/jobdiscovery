@@ -1,14 +1,14 @@
 import { redirect } from "next/navigation";
 import Landing from "@/screens/Landing";
 import { data } from "@/lib/data";
-import { currentUser } from "@/lib/supabase/server";
+import { currentUser, onboardingDone } from "@/lib/supabase/server";
 import { safeNext } from "@/lib/safe-next";
 
 export const revalidate = 0;
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
   const { next, error } = await searchParams;
-  if (await currentUser()) redirect(safeNext(next));
+  if (await currentUser()) redirect(safeNext(next, (await onboardingDone()) ? "/jobs" : "/onboarding"));
   let count: number | null = null;
   try {
     count = await data().countJobs();

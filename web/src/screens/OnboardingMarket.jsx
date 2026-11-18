@@ -7,6 +7,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { loadPreferences, savePreferences } from "@/lib/answers";
 
+const KEYS = ["rank", "added"];  // answers that autosave
+
 const C = { plum: "#7A3E6E", plumDeep: "#4A2141", ink: "#2A2028", muted: "#665D63", body: "#4D444B", line: "#EFE9D8", cream: "#FFFDF5", banana: "#FCEFA8", bananaLine: "#D9C24E", bananaInk: "#4A3B00" };
 const serif = "'Instrument Serif', serif";
 const RANKS = ["1st", "2nd", "3rd", "Skip"];
@@ -37,7 +39,8 @@ class OnboardingMarket extends React.Component {
 
   async componentDidMount() {
     try {
-      const { row } = await loadPreferences();
+      const { user, row } = await loadPreferences();
+      this.loaded = !!user;
       const saved = (row && row.lanes) || [];
       if (!saved.length) return;
       const liked = this.props.likedLanes || [];
@@ -71,11 +74,28 @@ class OnboardingMarket extends React.Component {
   async next() {
     this.setState({ saving: true, saveError: "" });
     try {
-      await savePreferences({ lanes: this.lanes() });
+      clearTimeout(this.saveTimer); this.saveTimer = null;
+      await this.persist();
       this.props.router.push("/onboarding/plan");
     } catch (e) {
       this.setState({ saving: false, saveError: e.message });
     }
+  }
+
+  persist() {
+    return savePreferences({ lanes: this.lanes() });
+  }
+  componentDidUpdate(_, prev) {
+    if (!this.loaded || !KEYS.some((k) => prev[k] !== this.state[k])) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.persist().catch((e) => this.setState({ saveError: e.message }));
+    }, 800);
+  }
+  componentWillUnmount() {
+    // Leaving the page (Back, or a link) saves anything not yet saved.
+    if (this.saveTimer) { clearTimeout(this.saveTimer); this.persist().catch(() => {}); }
   }
 
   render() {

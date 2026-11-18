@@ -1,6 +1,6 @@
 // Demo data from the design mockup, used until the jobs database is connected
 // (NEXT_PUBLIC_DATA_SOURCE=sample). Shapes match what the Supabase source returns.
-import type { DataSource, JobDetail, JobSummary, WorkMode } from "../types";
+import type { JobPage, DataSource, JobDetail, JobSummary, WorkMode } from "../types";
 import { choosePicks } from "./picks";
 
 type Raw = Omit<JobSummary, "id" | "companyId" | "roleLabel" | "indLabel" | "lvlLabel" | "l" | "lo" | "hi"> & {
@@ -103,6 +103,26 @@ export const sampleSource: DataSource = {
   name: "sample",
   async listJobs() {
     return SAMPLE_JOBS;
+  },
+  async searchJobs(q) {
+    const text = (q.q || "").toLowerCase();
+    let jobs = SAMPLE_JOBS.filter((j) =>
+      (!q.role?.length || q.role.includes(j.roleLabel)) && (!q.ind?.length || q.ind.includes(j.indLabel)) &&
+      (!q.mode?.length || q.mode.includes(j.l)) && (!q.lvl?.length || q.lvl.includes(j.lvl)) &&
+      (!q.process || j.process) && (!text || (j.title + " " + j.company + " " + j.why).toLowerCase().includes(text)));
+    jobs = q.sort === "pay" ? jobs.slice().sort((a, b) => (b.hi ?? -1) - (a.hi ?? -1)) : jobs.slice().sort((a, b) => a.days - b.days);
+    const size = q.pageSize ?? 20, page = q.page ?? 0;
+    const count = (key: (j: (typeof SAMPLE_JOBS)[number]) => string) => {
+      const m = new Map<string, number>();
+      SAMPLE_JOBS.forEach((j) => m.set(key(j), (m.get(key(j)) || 0) + 1));
+      return [...m.entries()].map(([value, n]) => ({ value, n })).sort((a, b) => b.n - a.n);
+    };
+    const res: JobPage = {
+      jobs: jobs.slice(page * size, page * size + size).map((j) => ({ ...j, roleLabel: j.roleLabel, role: j.roleLabel, ind: j.indLabel })),
+      total: jobs.length,
+      facets: { role: count((j) => j.roleLabel), ind: count((j) => j.indLabel), mode: count((j) => j.l), lvl: count((j) => j.lvl) },
+    };
+    return res;
   },
   async countJobs() {
     return SAMPLE_JOBS.length;

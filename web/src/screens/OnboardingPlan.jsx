@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { loadPlan, savePlan } from "@/lib/answers";
 import Link from "next/link";
 
+const KEYS = ['date', 'custom', 'hours', 'flexible', 'days', 'time'];  // answers that autosave
+
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -23,6 +25,7 @@ class OnboardingPlan extends React.Component {
   async componentDidMount() {
     try {
       const { user, row } = await loadPlan();
+      this.loaded = !!user;
       const next = { email: (user && user.email) || '' };
       if (row) {
         if (row.offer_by) { next.date = 'custom'; next.custom = new Date(row.offer_by + 'T00:00:00').getTime(); }
@@ -42,20 +45,37 @@ class OnboardingPlan extends React.Component {
     return s.date ? addMonths(today(), Number(s.date)) : null;
   }
   async next() {
-    const s = this.state;
-    const t = this.target();
     this.setState({ saving: true, saveError: '' });
     try {
-      await savePlan({
-        offer_by: t ? isoDay(t) : null, date_flexible: s.flexible, hours_per_week: s.hours,
-        email_days: s.days.map((d) => d.toLowerCase()), email_time: s.time || null,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York'
-      });
+      clearTimeout(this.saveTimer); this.saveTimer = null;
+      await this.persist();
       this.props.router.push('/matching');
     } catch (e) {
       this.setState({ saving: false, saveError: e.message });
     }
   }
+  persist() {
+    const s = this.state;
+    const t = this.target();
+    return savePlan({
+      offer_by: t ? isoDay(t) : null, date_flexible: s.flexible, hours_per_week: s.hours,
+      email_days: s.days.map((d) => d.toLowerCase()), email_time: s.time || null,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York'
+      });
+  }
+  componentDidUpdate(_, prev) {
+    if (!this.loaded || !KEYS.some((k) => prev[k] !== this.state[k])) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.persist().catch((e) => this.setState({ saveError: e.message }));
+    }, 800);
+  }
+  componentWillUnmount() {
+    // Leaving the page (Back, or a link) saves anything not yet saved.
+    if (this.saveTimer) { clearTimeout(this.saveTimer); this.persist().catch(() => {}); }
+  }
+
   renderVals() {
     const s = this.state;
     const TODAY = today();

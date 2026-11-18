@@ -13,6 +13,8 @@ const HORIZONS = [
 ];
 import Link from "next/link";
 
+const KEYS = ['dreams', 'dreamOwn', 'h', 'own', 'skip'];  // answers that autosave
+
 class OnboardingFuture extends React.Component {
   constructor(props) {
     super(props);
@@ -20,7 +22,8 @@ class OnboardingFuture extends React.Component {
   }
   async componentDidMount() {
     try {
-      const { row } = await loadPreferences();
+      const { user, row } = await loadPreferences();
+      this.loaded = !!user;
       const f = row && row.future;
       if (!f) return;
       const h = {}, own = {}, ownOpen = {};
@@ -39,20 +42,37 @@ class OnboardingFuture extends React.Component {
     const s = this.state;
     this.setState({ saving: true, saveError: '' });
     try {
-      const horizons = {};
-      HORIZONS.forEach(([id, , opts]) => {
-        const own = (s.own[id] || '').trim();
-        if (own) horizons[id] = own; else if (s.h[id] !== undefined) horizons[id] = opts[s.h[id]];
-      });
-      const future = {
-        dreams: s.skip.d ? null : s.dreams, own: s.skip.d ? null : s.dreamOwn.trim() || null,
-        horizons: s.skip.h ? null : horizons
-      };
-      await savePreferences({ future: future.dreams === null && future.horizons === null ? null : future });
+      clearTimeout(this.saveTimer); this.saveTimer = null;
+      await this.persist();
       this.props.router.push('/onboarding/picks');
     } catch (e) {
       this.setState({ saving: false, saveError: e.message });
     }
+  }
+  persist() {
+    const s = this.state;
+    const horizons = {};
+    HORIZONS.forEach(([id, , opts]) => {
+      const own = (s.own[id] || '').trim();
+      if (own) horizons[id] = own; else if (s.h[id] !== undefined) horizons[id] = opts[s.h[id]];
+    });
+    const future = {
+      dreams: s.skip.d ? null : s.dreams, own: s.skip.d ? null : s.dreamOwn.trim() || null,
+      horizons: s.skip.h ? null : horizons
+    };
+    return savePreferences({ future: future.dreams === null && future.horizons === null ? null : future });
+  }
+  componentDidUpdate(_, prev) {
+    if (!this.loaded || !KEYS.some((k) => prev[k] !== this.state[k])) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.persist().catch((e) => this.setState({ saveError: e.message }));
+    }, 800);
+  }
+  componentWillUnmount() {
+    // Leaving the page (Back, or a link) saves anything not yet saved.
+    if (this.saveTimer) { clearTimeout(this.saveTimer); this.persist().catch(() => {}); }
   }
   renderVals() {
     const s = this.state;

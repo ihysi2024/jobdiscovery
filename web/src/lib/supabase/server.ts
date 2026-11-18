@@ -62,3 +62,23 @@ export async function likedPostingIds(): Promise<string[]> {
   const { data } = await supabase.from("job_feedback").select("posting_id").eq("user_id", auth.user.id).eq("liked", true);
   return ((data ?? []) as { posting_id: number }[]).map((r) => String(r.posting_id));
 }
+
+/** Has the signed-in person finished onboarding? */
+export async function onboardingDone(): Promise<boolean> {
+  if (!AUTH_ENABLED) return false;
+  const supabase = await supabaseServer();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return false;
+  const { data } = await supabase.from("preferences").select("onboarded_at").eq("user_id", auth.user.id).maybeSingle();
+  return Boolean(data && data.onboarded_at);
+}
+
+/** Directions the signed-in person picked in onboarding (role families). */
+export async function ownLanes(): Promise<string[]> {
+  if (!AUTH_ENABLED) return [];
+  const supabase = await supabaseServer();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return [];
+  const { data } = await supabase.from("preferences").select("lanes").eq("user_id", auth.user.id).maybeSingle();
+  return (data && data.lanes) || [];
+}

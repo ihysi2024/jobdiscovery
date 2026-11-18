@@ -1,7 +1,7 @@
 // Reads the jobs database (written by the Python poller) through the read-only
 // `job_listings` view: open New York City jobs with their classification.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { DataSource, JobDetail, JobSummary, PostingSection, WorkMode } from "../types";
+import type { Facet, JobPage, JobQuery, DataSource, JobDetail, JobSummary, PostingSection, WorkMode } from "../types";
 import { cardDetails, choosePicks, type Candidate, type PickCard } from "./picks";
 
 let client: SupabaseClient | null = null;
@@ -51,6 +51,45 @@ function mode(r: Row): WorkMode {
 }
 
 type Process = { stages: { stage: string; detail: string }[]; timeline: string | null };
+
+export const LEVEL_LABELS = LEVEL;
+
+interface SearchRow extends Row { mode: WorkMode; has_process: boolean }
+
+/** Characters that would break PostgREST's or=() filter syntax. */
+const cleanQuery = (q: string) => q.replace(/[,()*%\\:."']/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+
+export async function searchJobs(q: JobQuery): Promise<JobPage> {
+  const size = Math.min(Math.max(q.pageSize ?? 20, 1), 50);
+  const page = Math.max(q.page ?? 0, 0);
+  let query = db()
+    .from("jobs_search")
+    .select("id, board_key, company_name, title, first_seen_at, industry, role_family, seniority, mode, " +
+            "salary_min_annual, salary_max_annual, has_process, interview_process, summary", { count: "exact" });
+  if (q.role?.length) query = query.in("role_family", q.role);
+  if (q.ind?.length) query = query.in("industry", q.ind);
+  if (q.mode?.length) query = query.in("mode", q.mode);
+  if (q.lvl?.length) query = query.in("seniority", q.lvl);
+  if (q.process) query = query.eq("has_process", true);
+  const text = cleanQuery(q.q ?? "");
+  if (text) query = query.or(`title.ilike.*${text}*,company_name.ilike.*${text}*,summary.ilike.*${text}*`);
+  query = q.sort === "pay"
+    ? query.order("salary_max_annual", { ascending: false, nullsFirst: false }).order("salary_min_annual", { ascending: false, nullsFirst: false })
+    : query.order("first_seen_at", { ascending: false }).order("id", { ascending: false });
+  const [{ data, error, count }, facetRes] = await Promise.all([
+    query.range(page * size, page * size + size - 1),
+    db().from("job_facets").select("facet, value, n"),
+  ]);
+  if (error) throw new Error("Couldn't load jobs: " + error.message);
+  if (facetRes.error) throw new Error("Couldn't load filters: " + facetRes.error.message);
+  const facets: JobPage["facets"] = { role: [], ind: [], mode: [], lvl: [] };
+  for (const f of (facetRes.data ?? []) as { facet: keyof JobPage["facets"]; value: string; n: number }[]) {
+    if (facets[f.facet]) facets[f.facet].push({ value: f.value, n: f.n } as Facet);
+  }
+  Object.values(facets).forEach((list) => list.sort((a, b) => b.n - a.n));
+  const jobs = ((data ?? []) as unknown as SearchRow[]).map((r) => ({ ...toSummary({ ...r, work_mode: r.mode }), process: r.has_process }));
+  return { jobs, total: count ?? 0, facets };
+}
 
 export function toSummary(r: Row): JobSummary {
   const l = mode(r);
@@ -125,6 +164,8 @@ export const supabaseSource: DataSource = {
     if (error) throw new Error("Couldn't load jobs: " + error.message);
     return (data as unknown as Row[]).map(toSummary);
   },
+
+  searchJobs,
 
   async countJobs() {
     const { count, error } = await db().from("job_listings").select("id", { count: "exact", head: true });

@@ -55,13 +55,35 @@ export interface MarketRow {
   openings: number; withPay: number; payLo: number | null; payHi: number | null;
 }
 
+export type JobSort = "new" | "pay";
+
+/** Filters for the job list; empty lists mean "any". */
 export interface JobQuery {
-  limit?: number;
+  q?: string;
+  role?: string[];
+  ind?: string[];
+  mode?: string[];
+  lvl?: string[];
+  process?: boolean;
+  sort?: JobSort;
+  page?: number;      // 0-based
+  pageSize?: number;
+  limit?: number;     // legacy: first N newest
+}
+
+export interface Facet { value: string; n: number }
+
+export interface JobPage {
+  jobs: JobSummary[];
+  total: number;
+  facets: { role: Facet[]; ind: Facet[]; mode: Facet[]; lvl: Facet[] };
 }
 
 export interface DataSource {
   name: "sample" | "supabase";
   listJobs(q?: JobQuery): Promise<JobSummary[]>;
+  /** One page of the job list, filtered and sorted in the database, with filter counts. */
+  searchJobs(q: JobQuery): Promise<JobPage>;
   /** Open NYC jobs right now, labeled or not. */
   countJobs(): Promise<number>;
   getJob(id: string): Promise<JobDetail | null>;
