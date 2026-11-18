@@ -47,16 +47,6 @@ export interface JobDetail extends JobSummary {
   timelineSource: string;    // "from 14 candidate reports" or "from the posting"
   steps_: InterviewStep[];
   contactGroups: ContactGroup[];
-  companyStats: { employees: string; valuation: string; tenure: string; promotion: string } | null;
-}
-
-export interface Company {
-  id: string;
-  name: string;
-  mono: string;
-  openRoles: Pick<JobSummary, "id" | "title" | "loc">[];
-  // Everything below needs company data we don't collect yet; null hides it.
-  stats: null | Record<string, unknown>;
 }
 
 /** Open-job counts and median posted pay; allRoles / allIndustries rows are totals. */
@@ -75,7 +65,6 @@ export interface DataSource {
   /** Open NYC jobs right now, labeled or not. */
   countJobs(): Promise<number>;
   getJob(id: string): Promise<JobDetail | null>;
-  getCompany(id: string): Promise<Company | null>;
   marketStats(): Promise<MarketRow[]>;
   /** Role families of these jobs, most common first (for the person's liked picks). */
   roleFamiliesOf(ids: string[]): Promise<string[]>;

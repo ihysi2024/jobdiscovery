@@ -16,7 +16,6 @@ export default class JobDetail extends React.Component {
     const job = this.props.job;
     const showFull = this.state.showFull;
     const liked = !!this.state.liked;
-    const stats = job.companyStats;
     return {
       job, showFull, fullLabel: showFull ? 'Show less' : 'Read the full posting',
       toggleFull: () => this.setState({ showFull: !showFull }),
@@ -26,7 +25,6 @@ export default class JobDetail extends React.Component {
         setUser('liked', liked ? list.filter((x) => x !== job.id) : list.concat(job.id));
         this.setState({ liked: !liked });
       },
-      companyHref: '/companies/' + encodeURIComponent(job.companyId),
       metaLine: ' · ' + job.loc + ' · ' + job.postedLabel,
       hasPay: !!job.payLabel, hasCompanyLine: !!job.companyLine,
       hasWhy: job.whyParas.length > 0,
@@ -40,8 +38,6 @@ export default class JobDetail extends React.Component {
       hasContacts: job.contactGroups.length > 0,
       groups: job.contactGroups,
       peopleCount: job.contactGroups.reduce((n, g) => n + g.people.length, 0),
-      hasStats: !!stats,
-      stats: stats || {},
     };
   }
 
@@ -83,9 +79,9 @@ export default class JobDetail extends React.Component {
 </h1>
 {" "}
 <div style={{ fontSize: "15px", color: "#665D63" }}>
-<Link href={vm.companyHref} style={{ color: "#2A2028", fontWeight: "500" }}>
+<span style={{ color: "#2A2028", fontWeight: "500" }}>
 {vm.job.company}
-</Link>
+</span>
 {vm.metaLine}
 </div>
 {" "}
@@ -291,55 +287,7 @@ export default class JobDetail extends React.Component {
 </p>
 </section>)}
 {" "}
-<Link href={vm.companyHref} style={{ display: "flex", flexDirection: "column", gap: "14px", border: "1px solid #EFE9D8", borderRadius: "16px", padding: "24px", textDecoration: "none", color: "#2A2028" }}>
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-<span style={{ fontSize: "18px", fontWeight: "600" }}>
-{vm.job.company + " at a glance"}
-</span>
-{" "}
-<span style={{ color: "#7A3E6E", fontWeight: "500" }}>
-{"Dashboard →"}
-</span>
-</div>
-{" "}
-{(vm.hasStats) ? (<><div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "16px" }}>
-<div>
-<div style={{ fontSize: "20px", fontWeight: "600" }}>
-{vm.stats.employees}
-</div>
-<div style={{ color: "#665D63", fontSize: "13px" }}>
-{"Employees"}
-</div>
-</div>
-{" "}
-<div>
-<div style={{ fontSize: "20px", fontWeight: "600" }}>
-{vm.stats.valuation}
-</div>
-<div style={{ color: "#665D63", fontSize: "13px" }}>
-{"Last valuation"}
-</div>
-</div>
-{" "}
-<div>
-<div style={{ fontSize: "20px", fontWeight: "600" }}>
-{vm.stats.tenure}
-</div>
-<div style={{ color: "#665D63", fontSize: "13px" }}>
-{"Avg tenure"}
-</div>
-</div>
-{" "}
-<div>
-<div style={{ fontSize: "20px", fontWeight: "600" }}>
-{vm.stats.promotion}
-</div>
-<div style={{ color: "#665D63", fontSize: "13px" }}>
-{"Avg promotion cycle"}
-</div>
-</div>
-</div></>) : (<div style={{ color: "#665D63" }}>{"See every open role at " + vm.job.company + "."}</div>)}
-</Link>
+
 </aside>
 </div>
 </div>

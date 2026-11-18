@@ -1,6 +1,6 @@
 // Demo data from the design mockup, used until the jobs database is connected
 // (NEXT_PUBLIC_DATA_SOURCE=sample). Shapes match what the Supabase source returns.
-import type { Company, DataSource, JobDetail, JobSummary, WorkMode } from "../types";
+import type { DataSource, JobDetail, JobSummary, WorkMode } from "../types";
 import { choosePicks } from "./picks";
 
 type Raw = Omit<JobSummary, "id" | "companyId" | "roleLabel" | "indLabel" | "lvlLabel" | "l" | "lo" | "hi"> & {
@@ -96,7 +96,6 @@ function detail(j: JobSummary): JobDetail {
       ? ["Recruiter screen", "Hiring manager chat", "Technical screen", "Onsite panel", "Offer"].slice(0, Math.max(2, j.steps)).map((name) => ({ name, meta: "" }))
       : [],
     contactGroups: [],
-    companyStats: isPB ? { employees: "420", valuation: "$1.2B", tenure: "2.6 yrs", promotion: "20 mo" } : null,
   };
 }
 
@@ -140,14 +139,4 @@ export const sampleSource: DataSource = {
     }));
   },
 
-  async getCompany(id): Promise<Company | null> {
-    const jobs = SAMPLE_JOBS.filter((j) => j.companyId === id || id === "sample");
-    if (!jobs.length) return null;
-    const first = id === "sample" ? SAMPLE_JOBS[0] : jobs[0];
-    return {
-      id: first.companyId, name: first.company, mono: first.mono,
-      openRoles: SAMPLE_JOBS.filter((j) => j.company === first.company).map(({ id, title, loc }) => ({ id, title, loc })),
-      stats: first.mono === "PB" ? { sample: true } : null,
-    };
-  },
 };

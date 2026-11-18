@@ -21,7 +21,7 @@ npm run dev                  # http://localhost:3000
   raw tables are locked to the app; only that view is readable.
 
 The screens never talk to a database directly. They get data from
-`src/lib/data` (`listJobs`, `getJob`, `getCompany`), which both sources implement
+`src/lib/data` (`listJobs`, `getJob`, `countJobs`, `marketStats`, `quickPicks`), which both sources implement
 with the types in `src/lib/types.ts`.
 
 | Route | Screen | Data |
@@ -30,7 +30,6 @@ with the types in `src/lib/types.ts`.
 | `/matching` | Loading screen | Mockup |
 | `/jobs` | Job list, filters, search, sort | **Data source**; filters built from the jobs |
 | `/jobs/[id]` | Job detail | **Data source**; sections hide when data is missing |
-| `/companies/[id]` | Company | Open roles from the **data source**; full dashboard only in sample mode |
 | `/my-jobs` | Tracker | Mockup |
 | `/profile` | Profile and plan | Mockup |
 | `/email-preview` | Daily to-do email | Mockup |
@@ -44,8 +43,8 @@ Liked jobs are saved in the browser (`src/lib/user-store.js`) until sign-in exis
   each private to its owner. Run it in the Supabase SQL editor when adding auth.
 * **Matching.** The list is newest first; "why you might be interested" shows
   the job's one-line summary until ranking against a profile exists.
-* **Contacts and company data** (headcount, funding, tenure). Those sections
-  hide when there's no data.
+* **Contacts.** The network section says so when there's nobody to show.
+* **Company pages** were in the mockup but are left out for now.
 
 ## How the screens were made
 

@@ -1,7 +1,7 @@
 // Reads the jobs database (written by the Python poller) through the read-only
 // `job_listings` view: open New York City jobs with their classification.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Company, DataSource, JobDetail, JobSummary, PostingSection, WorkMode } from "../types";
+import type { DataSource, JobDetail, JobSummary, PostingSection, WorkMode } from "../types";
 import { cardDetails, choosePicks, type Candidate, type PickCard } from "./picks";
 
 let client: SupabaseClient | null = null;
@@ -165,7 +165,6 @@ export const supabaseSource: DataSource = {
       timelineSource: proc ? "from the posting" : "",
       steps_: (proc?.stages ?? []).map((st) => ({ name: st.stage.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()), meta: st.detail })),
       contactGroups: [],
-      companyStats: null,
     };
     return detail;
   },
@@ -228,23 +227,4 @@ export const supabaseSource: DataSource = {
     });
   },
 
-  async getCompany(id) {
-    const { data, error } = await db()
-      .from("job_listings")
-      .select("id, title, company_name, work_mode, workplace_type")
-      .eq("board_key", id)
-      .order("first_seen_at", { ascending: false })
-      .limit(200);
-    if (error) throw new Error("Couldn't load the company: " + error.message);
-    const rows = (data ?? []) as unknown as Row[];
-    if (!rows.length) return null;
-    const company: Company = {
-      id,
-      name: rows[0]!.company_name,
-      mono: initials(rows[0]!.company_name),
-      openRoles: rows.map((r) => ({ id: String(r.id), title: r.title, loc: "New York · " + MODE[mode(r)] })),
-      stats: null,
-    };
-    return company;
-  },
 };
