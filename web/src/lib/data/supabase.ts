@@ -125,6 +125,12 @@ export const supabaseSource: DataSource = {
     return (data as unknown as Row[]).map(toSummary);
   },
 
+  async countJobs() {
+    const { count, error } = await db().from("job_listings").select("id", { count: "exact", head: true });
+    if (error) throw new Error("Couldn't count jobs: " + error.message);
+    return count ?? 0;
+  },
+
   async getJob(id) {
     if (!/^\d+$/.test(id)) return null;
     const { data, error } = await db()

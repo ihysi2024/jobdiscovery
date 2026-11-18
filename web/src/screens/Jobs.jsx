@@ -1,6 +1,7 @@
 "use client";
 /* Ported from the mockup (Jobs.dc.html). Layout and behavior match the design. */
 import React from "react";
+import UserMenu from "@/components/UserMenu";
 import Link from "next/link";
 import { getUser, setUser } from "@/lib/user-store";
 
@@ -143,9 +144,7 @@ export default class Jobs extends React.Component {
 </>) : null}
 </div>
 {" "}
-<Link href="/profile" aria-label="Your profile and plan" style={{ width: "36px", height: "36px", borderRadius: "18px", background: "#F3E6EF", color: "#5E2A54", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: "600", textDecoration: "none" }}>
-{"JR"}
-</Link>
+<UserMenu />
 </header>
 {" "}
 <div style={{ display: "flex", flexWrap: "wrap", gap: "48px", maxWidth: "1280px", margin: "0 auto", padding: "32px 40px 64px", boxSizing: "border-box" }}>

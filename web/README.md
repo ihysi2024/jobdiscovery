@@ -53,3 +53,11 @@ Liked jobs are saved in the browser (`src/lib/user-store.js`) until sign-in exis
 a small component class plus a template, which maps one-to-one onto a React
 class component). They've since been edited to take data from props, so edit
 them directly now rather than regenerating.
+
+## Sign-in
+
+Google sign-in through Supabase Auth. `/` is the landing page; every other
+page needs a signed-in user (`src/proxy.ts` redirects to `/` and back after
+sign-in). Google sends people to `/auth/callback`, which swaps the one-time
+code for a session cookie. Without the Supabase env vars (sample mode) the app
+runs signed out and nothing is protected.

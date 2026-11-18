@@ -1,6 +1,7 @@
 "use client";
 /* Ported from the mockup (MyJobs.dc.html). Layout and behavior match the design. */
 import React from "react";
+import UserMenu from "@/components/UserMenu";
 import Link from "next/link";
 
 export default class MyJobs extends React.Component {
@@ -99,9 +100,7 @@ export default class MyJobs extends React.Component {
 </Link>
 </nav>
 {" "}
-<Link href="/profile" aria-label="Your profile and plan" style={{ width: "36px", height: "36px", borderRadius: "18px", background: "#F3E6EF", color: "#5E2A54", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: "600", textDecoration: "none" }}>
-{"JR"}
-</Link>
+<UserMenu />
 </header>
 {" "}
 <div style={{ maxWidth: "1600px", margin: "0 auto", padding: "32px 24px 64px", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: "24px" }}>

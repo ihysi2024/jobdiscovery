@@ -1,6 +1,7 @@
 "use client";
 /* Ported from the mockup (Profile.dc.html). Layout and behavior match the design. */
 import React from "react";
+import UserMenu from "@/components/UserMenu";
 import Link from "next/link";
 
 export default class Profile extends React.Component {
@@ -41,9 +42,7 @@ export default class Profile extends React.Component {
 </Link>
 </nav>
 {" "}
-<Link href="/profile" aria-label="Your profile and plan" style={{ width: "36px", height: "36px", borderRadius: "18px", background: "#7A3E6E", color: "#FFFFFF", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: "600", textDecoration: "none" }}>
-{"JR"}
-</Link>
+<UserMenu dark />
 </header>
 {" "}
 <div style={{ maxWidth: "1240px", margin: "0 auto", padding: "32px 40px 64px", boxSizing: "border-box", display: "flex", flexWrap: "wrap", gap: "32px", alignItems: "flex-start" }}>

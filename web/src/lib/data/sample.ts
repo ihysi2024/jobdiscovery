@@ -104,6 +104,9 @@ export const sampleSource: DataSource = {
   async listJobs() {
     return SAMPLE_JOBS;
   },
+  async countJobs() {
+    return SAMPLE_JOBS.length;
+  },
   async getJob(id) {
     const j = SAMPLE_JOBS.find((x) => x.id === id) ?? (id === "sample" ? SAMPLE_JOBS[0] : undefined);
     return j ? detail(j) : null;

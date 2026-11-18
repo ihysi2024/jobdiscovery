@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "aligned",
+  title: "aligned: New York jobs, sorted by what you want",
   description: "Every open job in New York, matched to what you actually want.",
 };
 

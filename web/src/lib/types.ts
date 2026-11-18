@@ -66,6 +66,8 @@ export interface JobQuery {
 export interface DataSource {
   name: "sample" | "supabase";
   listJobs(q?: JobQuery): Promise<JobSummary[]>;
+  /** Open NYC jobs right now, labeled or not. */
+  countJobs(): Promise<number>;
   getJob(id: string): Promise<JobDetail | null>;
   getCompany(id: string): Promise<Company | null>;
 }
