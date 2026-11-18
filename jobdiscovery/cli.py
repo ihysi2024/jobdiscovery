@@ -332,6 +332,17 @@ async def cmd_check(args, store: Store) -> int:
     return 0
 
 
+def _error_kinds(store: Store, top: int = 12):
+    """Group boards whose last poll failed by hiring system and a normalized error message."""
+    from collections import Counter
+    c = Counter()
+    for r in store.db.all("SELECT ats, last_error FROM boards WHERE last_status='error'"):
+        kind = re.sub(r"https?://\S+", "<url>", r["last_error"] or "unknown")
+        kind = re.sub(r"\d{2,}", "N", kind)[:90]
+        c[(r["ats"], kind)] += 1
+    return c.most_common(top)
+
+
 def _print_samples(store: Store, n: int) -> None:
     rows = store.db.all(
         "SELECT p.title AS posted_title, f.* FROM job_features f JOIN postings p ON p.id = f.posting_id "
@@ -371,6 +382,11 @@ async def cmd_report(args, store: Store) -> int:
         for ats, r in s["by_ats"].items():
             print(f"{ats:<16}{r['boards']:>8,}{r['polled'] or 0:>8,}{r['gone'] or 0:>7,}{r['errors'] or 0:>8,}"
                   f"{r['boards_with_nyc'] or 0:>8,}{r['nyc_jobs'] or 0:>10,}")
+        kinds = _error_kinds(store)
+        if kinds:
+            print("\nBoards failing to load, by kind:")
+            for (ats, kind), n in kinds:
+                print(f"  {n:>6,}  {ats:<16}{kind}")
 
     if args.csv:
         out = Path(args.csv)

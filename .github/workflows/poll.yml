@@ -66,8 +66,6 @@ jobs:
       - name: Summary
         if: always()
         run: |
-          {
-            echo '```'
-            jobdiscovery report || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          out=$(jobdiscovery report || true)
+          echo "$out"
+          { echo '```'; echo "$out"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

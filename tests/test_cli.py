@@ -172,3 +172,21 @@ def test_check_flags_failed_classification(tmp_path, capsys):
     s.close()
     assert cli.main(["--db", db, "check"]) == 2
     assert "last classification run (process) ended with status 'failed'" in capsys.readouterr().err
+
+
+def test_report_groups_board_errors(tmp_path, capsys):
+    from jobdiscovery.models import Board
+    from jobdiscovery.store import Store
+    db = str(tmp_path / "e.sqlite")
+    s = Store(db)
+    boards = [Board("workday", f"t{i}|wd1|site") for i in range(3)] + [Board("lever", "x")]
+    s.add_boards(boards, "test")
+    for b in boards[:3]:
+        s.mark_error(b, f"HTTP 422 for https://t.wd1.myworkdayjobs.com/{b.token}")
+    s.mark_error(boards[3], "ReadTimeout")
+    s.close()
+    capsys.readouterr()
+    assert cli.main(["--db", db, "report"]) == 0
+    out = capsys.readouterr().out
+    assert "Boards failing to load" in out
+    assert "     3  workday         HTTP N for <url>" in out
