@@ -16,6 +16,7 @@ Key behaviors:
 from __future__ import annotations
 
 import json
+import time
 import zlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -115,6 +116,19 @@ CREATE INDEX IF NOT EXISTS job_features_industry ON job_features(industry)
 # with the public (publishable) key unless row-level security is on, so the raw
 # tables are locked and only this view of open NYC jobs is granted to the app's
 # roles. The poller connects as the table owner, which RLS doesn't restrict.
+# Bump when _SCHEMA or PUBLIC_API_SQL changes so existing databases get upgraded.
+SCHEMA_VERSION = 1
+_SETUP_LOCK = 0x6A6F6273  # advisory lock id for schema setup
+_LOCK_META_SQL = """
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    ALTER TABLE schema_meta ENABLE ROW LEVEL SECURITY;
+    REVOKE ALL ON schema_meta FROM anon, authenticated;
+  END IF;
+END $$
+"""
+
 PUBLIC_API_SQL = ("""
 CREATE OR REPLACE VIEW job_listings AS
 SELECT p.id, p.board_key, b.ats, b.token,
@@ -180,16 +194,53 @@ class Store:
         self.db = DB(url)
         self.has_pgvector = False
         if self.db.postgres:
-            self.has_pgvector = self._enable_pgvector()
-            vector = f"vector({EMBED_DIM})" if self.has_pgvector else "TEXT"
-            schema = _SCHEMA.format(id_col="BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY",
-                                    float="DOUBLE PRECISION", vector=vector)
+            self._setup_postgres()
         else:
-            schema = _SCHEMA.format(id_col="INTEGER PRIMARY KEY AUTOINCREMENT", float="REAL", vector="TEXT")
-        self.db.script(schema)
-        if self.db.postgres:
-            for stmt in PUBLIC_API_SQL:
-                self.db.execute(stmt)
+            self.db.script(_SCHEMA.format(id_col="INTEGER PRIMARY KEY AUTOINCREMENT", float="REAL", vector="TEXT"))
+
+    def _setup_postgres(self) -> None:
+        """Create or upgrade the schema once per SCHEMA_VERSION.
+
+        Several programs start at once (the poll and 8 classify workers). Running the
+        DDL in all of them made them deadlock each other, so the setup is skipped when
+        it's already done, and otherwise one process does it while the others wait."""
+        def current() -> bool:
+            if self.db.scalar("SELECT to_regclass('schema_meta') IS NOT NULL") is not True:
+                return False
+            return self.db.scalar("SELECT value FROM schema_meta WHERE key='version'") == str(SCHEMA_VERSION)
+
+        if current():
+            self.has_pgvector = self._vector_column()
+            return
+        pgvector = self._enable_pgvector()  # outside the transaction: a failure here would abort it
+        for attempt in range(4):
+            try:
+                self._upgrade(current, pgvector)
+                break
+            except Exception as e:  # deadlock or lock timeout against an older program still running
+                if attempt == 3 or type(e).__name__ not in ("DeadlockDetected", "LockNotAvailable"):
+                    raise
+                time.sleep(2 + 3 * attempt)
+        self.has_pgvector = self._vector_column()
+
+    def _upgrade(self, current, pgvector: bool) -> None:
+        with self.db.tx():
+            self.db.execute("SELECT pg_advisory_xact_lock(?)", (_SETUP_LOCK,))
+            if not current():
+                vector = f"vector({EMBED_DIM})" if pgvector else "TEXT"
+                self.db.script(_SCHEMA.format(id_col="BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY",
+                                              float="DOUBLE PRECISION", vector=vector))
+                for stmt in PUBLIC_API_SQL:
+                    self.db.execute(stmt)
+                self.db.execute("CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+                self.db.execute("INSERT INTO schema_meta (key, value) VALUES ('version', ?) "
+                                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", (str(SCHEMA_VERSION),))
+                self.db.execute(_LOCK_META_SQL)
+
+    def _vector_column(self) -> bool:
+        return self.db.scalar(
+            "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
+            "WHERE attrelid = 'job_features'::regclass AND attname = 'embedding'") not in (None, "text")
 
     def _enable_pgvector(self) -> bool:
         """Use pgvector for embeddings when the database allows it (Supabase and Neon do)."""

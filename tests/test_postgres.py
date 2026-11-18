@@ -23,7 +23,7 @@ pytestmark = pytest.mark.skipif(not URL, reason="TEST_DATABASE_URL not set")
 def clean(monkeypatch):
     import psycopg
     with psycopg.connect(URL, autocommit=True) as c:
-        c.execute("DROP TABLE IF EXISTS job_features, postings, boards, runs CASCADE")
+        c.execute("DROP TABLE IF EXISTS job_features, postings, boards, runs, schema_meta CASCADE")
     monkeypatch.setattr(cli, "TRANSPORT", transport())
     import jobdiscovery.http as h
     monkeypatch.setattr(h.PoliteClient, "_backoff", lambda self, attempt: 0)
@@ -108,3 +108,31 @@ def test_public_view_and_locked_tables():
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             c.execute("SELECT * FROM runs")
         c.execute("RESET ROLE")
+
+
+def test_many_programs_starting_at_once():
+    """The poll and 8 classify workers start together; setup must not deadlock them."""
+    import threading
+    Store(URL).close()                                   # set up once
+    with __import__("psycopg").connect(URL, autocommit=True) as c:
+        c.execute("UPDATE schema_meta SET value='0'")    # pretend an upgrade is due
+    errors = []
+
+    def start():
+        try:
+            s = Store(URL)
+            s.postings_to_process(limit=5)
+            s.summary()
+            s.close()
+        except Exception as e:  # pragma: no cover - the failure we're guarding against
+            errors.append(e)
+
+    threads = [threading.Thread(target=start) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    s = Store(URL)
+    from jobdiscovery.store import SCHEMA_VERSION
+    assert s.db.scalar("SELECT value FROM schema_meta WHERE key='version'") == str(SCHEMA_VERSION)
