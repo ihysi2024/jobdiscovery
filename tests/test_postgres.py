@@ -86,3 +86,25 @@ def test_process_on_postgres_with_pgvector(capsys, monkeypatch):
                        ("[" + ",".join(["0.1"] * 384) + "]",))
         assert row["n"] == 55
     s.close()
+
+
+def test_public_view_and_locked_tables():
+    """The web app reads job_listings; on Supabase the raw tables are closed to its roles."""
+    import psycopg
+    with psycopg.connect(URL, autocommit=True) as c:
+        for role in ("anon", "authenticated"):
+            c.execute(f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='{role}') "
+                      f"THEN CREATE ROLE {role} NOLOGIN; END IF; END $$")
+    s = Store(URL)
+    b = Board("greenhouse", "acme")
+    s.add_boards([b], "test")
+    s.apply_poll(b, [Posting(ats="greenhouse", board_key=b.key, external_id="1", title="Nurse",
+                             locations=["New York, NY"], url="u", description_text="x")])
+    assert s.db.scalar("SELECT COUNT(*) FROM job_listings") == 1
+    s.close()
+    with psycopg.connect(URL, autocommit=True) as c:
+        c.execute("SET ROLE anon")
+        assert c.execute("SELECT title FROM job_listings").fetchone()[0] == "Nurse"
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            c.execute("SELECT * FROM runs")
+        c.execute("RESET ROLE")

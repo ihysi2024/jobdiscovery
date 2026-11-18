@@ -111,6 +111,40 @@ CREATE INDEX IF NOT EXISTS job_features_role ON job_features(role_family, senior
 CREATE INDEX IF NOT EXISTS job_features_industry ON job_features(industry)
 """
 
+# What the web app may read. On Supabase, tables in the public schema are reachable
+# with the public (publishable) key unless row-level security is on, so the raw
+# tables are locked and only this view of open NYC jobs is granted to the app's
+# roles. The poller connects as the table owner, which RLS doesn't restrict.
+PUBLIC_API_SQL = ("""
+CREATE OR REPLACE VIEW job_listings AS
+SELECT p.id, p.board_key, b.ats, b.token,
+       COALESCE(f.company_name, b.company_name, b.token) AS company_name,
+       COALESCE(f.role_title, p.title) AS title, p.title AS posted_title,
+       p.locations, p.workplace_type, p.url, p.posted_at, p.first_seen_at, p.department,
+       p.description_text,
+       f.industry, f.role_family, f.seniority, f.employment_type, f.work_mode,
+       f.salary_min_annual, f.salary_max_annual, f.salary_currency, f.salary_source,
+       f.years_experience_min, f.degree_required, f.visa_sponsorship,
+       f.skills, f.interview_process, f.summary, f.processed_at
+FROM postings p
+JOIN boards b ON b.key = p.board_key
+LEFT JOIN job_features f ON f.posting_id = p.id
+WHERE p.closed_at IS NULL AND p.is_nyc = 1
+""", """
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    ALTER TABLE boards ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE postings ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE runs ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE job_features ENABLE ROW LEVEL SECURITY;
+    REVOKE ALL ON boards, postings, runs, job_features FROM anon, authenticated;
+    REVOKE ALL ON job_listings FROM anon, authenticated;
+    GRANT SELECT ON job_listings TO anon, authenticated;
+  END IF;
+END $$
+""")
+
 from .embed import EMBED_DIM  # noqa: E402  (keeps the schema in step with the embedding model)
 
 DAILY = timedelta(days=1)
@@ -153,6 +187,9 @@ class Store:
         else:
             schema = _SCHEMA.format(id_col="INTEGER PRIMARY KEY AUTOINCREMENT", float="REAL", vector="TEXT")
         self.db.script(schema)
+        if self.db.postgres:
+            for stmt in PUBLIC_API_SQL:
+                self.db.execute(stmt)
 
     def _enable_pgvector(self) -> bool:
         """Use pgvector for embeddings when the database allows it (Supabase and Neon do)."""

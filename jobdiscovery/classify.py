@@ -69,6 +69,26 @@ SCHEMA = {
     },
 }
 
+def bounded_schema(schema: dict) -> dict:
+    """SCHEMA with size limits, for local models: a grammar that can't run long stops a small
+    model from repeating itself until it hits max_tokens."""
+    import copy
+    s = copy.deepcopy(schema)
+    props = s["properties"]
+    props["company_name"]["anyOf"][0]["maxLength"] = 100
+    props["role_title"]["maxLength"] = 120
+    props["summary"]["maxLength"] = 240
+    props["skills"].update(maxItems=8)
+    props["skills"]["items"]["maxLength"] = 40
+    ip = props["interview_process"]["anyOf"][0]["properties"]
+    ip["stages"]["maxItems"] = 8
+    ip["stages"]["items"]["properties"]["detail"]["maxLength"] = 160
+    ip["timeline"]["anyOf"][0]["maxLength"] = 80
+    return s
+
+
+LOCAL_SCHEMA = bounded_schema(SCHEMA)
+
 SYSTEM = f"""You read one job posting and return structured facts for a job search app used by people in every field.
 
 Rules:
@@ -219,7 +239,7 @@ class LocalBackend:
     """A model served by llama.cpp's llama-server (OpenAI-compatible API).
 
     Start the server with, for example:
-        llama-server -hf bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M --no-mmproj -c 8192 -np 2 --port 8080
+        llama-server -hf bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M --no-mmproj --jinja --reasoning-budget 0 -c 8192 -np 2 --port 8080
     """
 
     def __init__(self, url: str | None = None, model_label: str = "qwen3.5-4b", *,
@@ -250,7 +270,7 @@ class LocalBackend:
             "temperature": 0.2,
             "top_p": 0.8,
             "max_tokens": 700,
-            "response_format": {"type": "json_schema", "json_schema": {"name": "job", "schema": SCHEMA, "strict": True}},
+            "response_format": {"type": "json_schema", "json_schema": {"name": "job", "schema": LOCAL_SCHEMA, "strict": True}},
             # Qwen3.5 "thinks" by default; we want the answer only.
             "chat_template_kwargs": {"enable_thinking": False},
         }
@@ -261,9 +281,13 @@ class LocalBackend:
         u = data.get("usage") or {}
         self.usage.add(u.get("prompt_tokens", 0), u.get("completion_tokens", 0))
         choice = (data.get("choices") or [{}])[0]
+        msg = choice.get("message") or {}
         if choice.get("finish_reason") == "length":
-            raise ValueError("response cut off at max_tokens")
-        return json.loads(choice["message"]["content"])
+            thinking = msg.get("reasoning_content") or ""
+            raise ValueError(f"response cut off at max_tokens ({u.get('completion_tokens')} tokens; "
+                             f"{'thinking ' + str(len(thinking)) + ' chars; ' if thinking else ''}"
+                             f"starts: {(msg.get('content') or '')[:160]!r})")
+        return json.loads(msg["content"])
 
     async def close(self):
         if self._http is not None:

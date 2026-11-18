@@ -331,7 +331,29 @@ async def cmd_check(args, store: Store) -> int:
     return 0
 
 
+def _print_samples(store: Store, n: int) -> None:
+    rows = store.db.all(
+        "SELECT p.title AS posted_title, f.* FROM job_features f JOIN postings p ON p.id = f.posting_id "
+        "WHERE f.processed_at IS NOT NULL ORDER BY f.processed_at DESC, f.posting_id DESC LIMIT ?", (n,))
+    print(f"Latest {len(rows)} classified jobs:")
+    for r in rows:
+        r = dict(r)
+        pay = (f"${r['salary_min_annual']:,.0f}-{r['salary_max_annual']:,.0f} ({r['salary_source']})"
+               if r["salary_min_annual"] is not None else "no pay listed")
+        print(f"- {r['posted_title']}  [{r['model']}]")
+        print(f"    {r['company_name']} | {r['industry']} | {r['role_family']} | {r['seniority']} | "
+              f"{r['work_mode']} | {r['employment_type']} | {pay}")
+        print(f"    years {r['years_experience_min']} | degree {r['degree_required']} | visa {r['visa_sponsorship']} | "
+              f"skills {r['skills']}")
+        print(f"    {r['summary']}")
+        if r["interview_process"]:
+            print(f"    interview: {r['interview_process'][:200]}")
+    print()
+
+
 async def cmd_report(args, store: Store) -> int:
+    if args.samples:
+        _print_samples(store, args.samples)
     s = store.summary()
     if args.json:
         print(json.dumps(s, indent=2))
@@ -423,6 +445,7 @@ def build_parser() -> argparse.ArgumentParser:
     r = sub.add_parser("report", help="summarize what's been found")
     r.add_argument("--csv", metavar="DIR", help="also write CSVs of employers and open NYC jobs to DIR")
     r.add_argument("--json", action="store_true", help="print the summary as JSON")
+    r.add_argument("--samples", type=int, default=0, metavar="N", help="also print the N most recently classified jobs")
     return p
 
 

@@ -145,12 +145,13 @@ def test_trim_keeps_interview_section():
 
 
 def test_local_request_shape():
+    from jobdiscovery.classify import LOCAL_SCHEMA
     server = FakeLlamaServer()
     c = Classifier(server.backend())
     f = asyncio.run(c.classify({"title": "ML Engineer", "locations": '["New York, NY"]', "description_text": "x" * 20000}))
     body = server.calls[0]
     assert body["chat_template_kwargs"] == {"enable_thinking": False}
-    assert body["response_format"]["json_schema"]["schema"] == SCHEMA
+    assert body["response_format"]["json_schema"]["schema"] == LOCAL_SCHEMA
     assert len(body["messages"][1]["content"]) < 4000          # long descriptions are trimmed
     assert f["industry"] == "Health Tech" and c.method == "rules+qwen3.5-4b"
     assert c.usage.calls == 1 and c.usage.cost_usd == 0
@@ -299,3 +300,12 @@ def test_rules_backend_needs_no_model(polled_db, monkeypatch, capsys):
     assert "Processed 55 of 55" in capsys.readouterr().out
     s = Store(polled_db)
     assert s.db.scalar("SELECT COUNT(*) FROM job_features WHERE model='rules'") == 55
+
+
+def test_report_samples(polled_db, monkeypatch, capsys):
+    use_fakes(monkeypatch, FakeLlamaServer())
+    cli.main(["--db", polled_db, "process", "--limit", "3"])
+    capsys.readouterr()
+    assert cli.main(["--db", polled_db, "report", "--samples", "2"]) == 0
+    out = capsys.readouterr().out
+    assert "Latest 2 classified jobs" in out and "Health Tech" in out

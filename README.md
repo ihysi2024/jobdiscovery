@@ -123,7 +123,7 @@ fields) and `--backend claude` (Claude Haiku via the API; needs
 
 ```bash
 pip install -e ".[process]"
-llama-server -hf bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M --no-mmproj --jinja -c 16384 -np 4 &
+llama-server -hf bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M --no-mmproj --jinja --reasoning-budget 0 -c 16384 -np 4 &
 jobdiscovery process --limit 20      # try a few first
 jobdiscovery process --shard 0/2     # half the queue (run 1/2 elsewhere at the same time)
 ```

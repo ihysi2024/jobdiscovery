@@ -31,7 +31,7 @@ if [ -z "${DATABASE_URL:-}" ]; then
 fi
 
 echo "Starting the model server (the first start downloads about 3 GB)..."
-llama-server -hf "$MODEL" --no-mmproj --jinja -c $((SLOTS * 4096)) -np "$SLOTS" \
+llama-server -hf "$MODEL" --no-mmproj --jinja --reasoning-budget 0 -c $((SLOTS * 4096)) -np "$SLOTS" \
   --host 127.0.0.1 --port "$PORT" > /tmp/jobdiscovery-llama.log 2>&1 &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null || true' EXIT
