@@ -1,0 +1,28 @@
+name: Add seed boards
+
+# Adds the large-employer careers sites listed in seeds/big_employers.txt.
+# Boards already known are left alone; new ones get polled by the next poll.
+
+on:
+  push:
+    branches: [main]
+    paths: ["seeds/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: seed-boards
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install ".[postgres]"
+      - run: jobdiscovery add --file seeds/big_employers.txt --source seed

@@ -43,7 +43,12 @@ API_HOST_LIMITS = {
     "api.ashbyhq.com": 6,
     "api.smartrecruiters.com": 4,
     "index.commoncrawl.org": 1,
+    # Workday gives every employer its own host but rate-limits by caller, so
+    # all Workday sites share one limit.
+    ".myworkdayjobs.com": 4,
 }
+# Seconds between request starts, per host or group.
+API_MIN_INTERVAL = {".myworkdayjobs.com": 0.25}
 
 # Tests swap in an httpx.MockTransport here, and fakes for the classifier/embedder.
 TRANSPORT = None
@@ -169,7 +174,8 @@ async def cmd_poll(args, store: Store) -> int:
         sem = asyncio.Semaphore(args.concurrency)
         started = time.monotonic()
 
-        async with PoliteClient(per_host=2, host_limits=API_HOST_LIMITS, transport=TRANSPORT) as client:
+        async with PoliteClient(per_host=2, host_limits=API_HOST_LIMITS, min_interval=API_MIN_INTERVAL,
+                                transport=TRANSPORT) as client:
             async def one(board):
                 async with sem:
                     if deadline is not None and time.monotonic() >= deadline:

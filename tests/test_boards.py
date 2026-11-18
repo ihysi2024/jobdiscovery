@@ -36,3 +36,13 @@ def test_rejects_non_boards(url):
 
 def test_board_keys_are_distinct_by_region():
     assert Board("lever", "x").key != Board("lever", "x", "eu").key
+
+
+def test_big_employer_links():
+    from jobdiscovery.boards import board_from_url
+    assert board_from_url("https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/job/1").key == "oracle:jpmc.fa.oraclecloud.com|CX_1001"
+    assert board_from_url("https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/sites/jobsearch").key == "oracle:eeho.fa.us2.oraclecloud.com|jobsearch"
+    assert board_from_url("https://foo.fa.us2.oraclecloud.com/fscmUI/faces/x") is None
+    assert board_from_url("https://www.amazon.jobs/en/jobs/1/x").key == "amazon:amazon"
+    assert board_from_url("https://cityjobs.nyc.gov/").key == "nycjobs:nyc"
+    assert board_from_url("https://careers.bankofamerica.com/en-us/job-detail/1").key == "bofa:bofa"

@@ -76,6 +76,14 @@ def test_errors_back_off_and_never_close():
     assert s.due_boards(when=T0 + timedelta(days=1, hours=20)) == [B]
 
 
+def test_rate_limited_boards_retry_next_run():
+    s = make_store()
+    for h in (0, 7, 14):
+        s.mark_error(B, "workday:x: HTTP 429", when=T0 + timedelta(hours=h))
+    assert s.db.scalar("SELECT error_streak FROM boards WHERE key=?", (B.key,)) == 0
+    assert s.due_boards(when=T0 + timedelta(hours=20, minutes=1)) == [B]
+
+
 def test_add_boards_is_idempotent():
     s = make_store()
     assert s.add_boards([B, Board("lever", "beta")], "test") == 1

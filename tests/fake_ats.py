@@ -82,6 +82,38 @@ CC_URLS = {
 }
 
 
+ORACLE_PAGE = {"items": [{"TotalJobsCount": 2, "requisitionList": [
+    {"Id": "101", "Title": "Associate, Credit Risk", "PrimaryLocation": "New York, NY, United States",
+     "PostedDate": "2026-11-17", "JobFamily": "Risk", "ShortDescriptionStr": "Short.", "secondaryLocations": []},
+    {"Id": "102", "Title": "Teller", "PrimaryLocation": "Columbus, OH, United States", "PostedDate": "2026-11-16",
+     "secondaryLocations": [{"Name": "Brooklyn, NY, United States"}]},
+]}]}
+ORACLE_DETAIL = {"items": [{"Id": "101", "ExternalDescriptionStr": "<p>Model credit risk.</p>",
+                            "ExternalQualificationsStr": "<ul><li>3+ years in Python</li></ul>"}]}
+AMAZON = {"hits": 2, "jobs": [
+    {"id_icims": "9001", "title": "Data Engineer", "normalized_location": "New York, New York, USA",
+     "job_path": "/en/jobs/9001/data-engineer", "posted_date": "November 17, 2026", "job_category": "Data",
+     "description": "Build pipelines.<br/>", "basic_qualifications": "- 3+ years of SQL"},
+    {"id_icims": "9002", "title": "Area Manager", "normalized_location": "Jersey City, New Jersey, USA",
+     "job_path": "/en/jobs/9002/area-manager", "description": "Lead a team."},
+]}
+NYC_JOBS = [
+    {"job_id": "804431", "posting_type": "Internal", "agency": "DEPT OF ENVIRONMENT PROTECTION",
+     "business_title": "Engineer (internal)", "work_location": "59-17 Junction Blvd., Queens"},
+    {"job_id": "804431", "posting_type": "External", "agency": "DEPT OF ENVIRONMENT PROTECTION",
+     "business_title": "Civil Engineer", "work_location": "59-17 Junction Blvd., Queens",
+     "job_description": "Design water mains.", "minimum_qual_requirements": "A baccalaureate degree in engineering.",
+     "salary_range_from": "78000", "salary_range_to": "98000.5", "salary_frequency": "Annual",
+     "posting_date": "2026-11-10T00:00:00.000"},
+]
+BOFA = {"totalMatches": 1, "jobsList": [
+    {"jobRequisitionId": "26037894", "postingTitle": "Operations Analyst", "primaryLocation": "New York, New York",
+     "additionalLocationsList": "150 N College St, Charlotte, North Carolina, United States; ",
+     "jcrURL": "/en-us/job-detail/26037894/operations-analyst-new-york", "postedDate": "11/18/2026",
+     "family": "Operations", "lob": "Global Operations", "minYearsOfExperience": 2},
+]}
+
+
 def handler(request: httpx.Request) -> httpx.Response:
     url = request.url
     host, path = url.host, url.path
@@ -107,6 +139,34 @@ def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=WORKDAY_LIST)
         if path == "/wday/cxs/megacorp/External/job/Multiple/Scientist_R2":
             return httpx.Response(200, json=WORKDAY_DETAIL)
+
+    raw_q = url.query.decode() if isinstance(url.query, bytes) else url.query
+    if host == "jpmc.fa.oraclecloud.com":
+        if path.endswith("/recruitingCEJobRequisitions") and "siteNumber=CX_1001" in raw_q:
+            return httpx.Response(200, json=ORACLE_PAGE if "offset=0" in raw_q else {"items": [{"TotalJobsCount": 2, "requisitionList": []}]})
+        if path.endswith("/recruitingCEJobRequisitionDetails") and "Id=%22101%22" in raw_q:
+            return httpx.Response(200, json=ORACLE_DETAIL)
+        return httpx.Response(200, json={"items": []})
+
+    if host == "www.amazon.jobs" and path == "/en/search.json":
+        return httpx.Response(200, json=AMAZON if q.get("offset", ["0"])[0] == "0" else {"hits": 2, "jobs": []})
+
+    if host == "data.cityofnewyork.us" and path == "/resource/kpav-sd4t.json":
+        return httpx.Response(200, json=NYC_JOBS)
+
+    if host == "careers.bankofamerica.com" and path == "/services/jobssearchservlet":
+        return httpx.Response(200, json=BOFA)
+
+    if host == "bigco.wd1.myworkdayjobs.com" and request.method == "POST":
+        body = json.loads(request.content)
+        if body["appliedFacets"] == {"locations": ["loc-nyc", "loc-bk"]}:
+            return httpx.Response(200, json={"total": 1, "jobPostings": [
+                {"title": "Analyst", "externalPath": "/job/New-York/Analyst_R1", "locationsText": "New York, NY"}]})
+        return httpx.Response(200, json={"total": 5000, "jobPostings": [{"title": "Elsewhere", "externalPath": "/job/x"}],
+            "facets": [{"facetParameter": "jobFamilyGroup", "values": [{"descriptor": "New York Ops", "id": "fam"}]},
+                       {"facetParameter": "locationMainGroup", "values": [{"facetParameter": "locations", "values": [
+                           {"descriptor": "New York, NY", "id": "loc-nyc"}, {"descriptor": "Brooklyn, NY", "id": "loc-bk"},
+                           {"descriptor": "Albany, NY", "id": "loc-alb"}]}]}]})
 
     if host == "index.commoncrawl.org":
         if path == "/collinfo.json":

@@ -22,7 +22,7 @@ import httpx
 
 from .http import PoliteClient
 from .models import Board, Posting
-from .nyc import any_nyc
+from .nyc import any_nyc, location_is_nyc
 
 log = logging.getLogger(__name__)
 
@@ -197,14 +197,26 @@ async def poll_smartrecruiters(client: PoliteClient, board: Board) -> list[Posti
 _MULTI_LOC = re.compile(r"^\d+\s+locations?$", re.I)
 
 
+# Above this many jobs, ask Workday for just the NYC jobs (by its location
+# filter) instead of paging through the whole board.
+_WORKDAY_FILTER_ABOVE = 200
+
+
 async def poll_workday(client: PoliteClient, board: Board, *, max_jobs: int = 5000) -> list[Posting]:
     tenant, wd, site = board.token.split("|", 2)
     base = f"https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{quote(site)}"
     out, offset, page_size = [], 0, 20  # Workday caps pages at 20
+    facets: dict = {}
     while offset < max_jobs:
-        resp = await client.post(f"{base}/jobs", json={"appliedFacets": {}, "limit": page_size, "offset": offset, "searchText": ""})
+        resp = await client.post(f"{base}/jobs", json={"appliedFacets": facets, "limit": page_size, "offset": offset, "searchText": ""})
         _check(resp, board)
         data = resp.json()
+        total = int(data.get("total") or 0)
+        if offset == 0 and not facets and total > _WORKDAY_FILTER_ABOVE:
+            nyc = _workday_nyc_facets(data.get("facets") or [])
+            if nyc:
+                facets = nyc
+                continue  # start over with only the NYC jobs
         postings = data.get("jobPostings") or []
         for j in postings:
             path = j.get("externalPath") or ""
@@ -219,11 +231,30 @@ async def poll_workday(client: PoliteClient, board: Board, *, max_jobs: int = 50
                 is_remote=any("remote" in l.lower() for l in locs),
                 raw=j,
             ))
-        total = int(data.get("total") or 0)
         offset += len(postings)
         if not postings or offset >= total:
             break
     return out
+
+
+def _workday_nyc_facets(facets: list) -> dict[str, list[str]]:
+    """The location filter values on a Workday board that are in NYC, as appliedFacets."""
+    found: dict[str, list[str]] = {}
+
+    def walk(items, param=None):
+        for f in items or []:
+            p = f.get("facetParameter") or param
+            if f.get("values"):
+                walk(f["values"], p)
+            elif f.get("id") and p and "location" in p.lower() and location_is_nyc(f.get("descriptor") or ""):
+                found.setdefault(p, []).append(f["id"])
+
+    walk(facets)
+    if not found:
+        return {}
+    # Use one parameter; Workday ANDs different parameters together.
+    best = max(found, key=lambda k: (k.lower() == "locations", len(found[k])))
+    return {best: found[best]}
 
 
 async def _workday_detail_locations(client: PoliteClient, base: str, path: str) -> list[str]:

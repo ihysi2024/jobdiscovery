@@ -354,6 +354,8 @@ class Store:
         when = when or now_utc()
         streak = (self.db.scalar("SELECT error_streak FROM boards WHERE key=?", (board.key,)) or 0) + 1
         delay = min(timedelta(hours=6) * (2 ** (streak - 1)), timedelta(days=14))
+        if "HTTP 429" in error:  # we were too fast, not a broken board: try again next run
+            streak, delay = streak - 1, timedelta(hours=6)
         self.db.execute(
             "UPDATE boards SET last_polled_at=?, last_status='error', last_error=?, error_streak=?, next_poll_at=? "
             "WHERE key=?", (iso(when), error[:500], streak, iso(when + delay), board.key))

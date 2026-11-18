@@ -7,6 +7,7 @@ import asyncio
 import sys
 
 from jobdiscovery.boards import board_from_url
+from jobdiscovery.cli import API_HOST_LIMITS, API_MIN_INTERVAL
 from jobdiscovery.http import PoliteClient
 from jobdiscovery.nyc import any_nyc
 from jobdiscovery.pollers import BoardGone, PollError, poll_board
@@ -21,7 +22,7 @@ async def main(path):
         url, _, name = line.partition(" | ")
         seeds.append((board_from_url(url.strip()), name.strip() or url.strip()))
     sem = asyncio.Semaphore(8)
-    async with PoliteClient(per_host=2) as client:
+    async with PoliteClient(per_host=2, host_limits=API_HOST_LIMITS, min_interval=API_MIN_INTERVAL) as client:
         async def one(board, name):
             if board is None:
                 return name, "not a supported link", 0, 0

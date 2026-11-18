@@ -48,6 +48,9 @@ jobs:
             exit 1
           fi
 
+      - name: Add seed boards
+        run: jobdiscovery add --file seeds/big_employers.txt --source seed
+
       - name: Discover boards
         # The Common Crawl index is slow and rate-limited. Progress is saved
         # page by page, so a run that hits the time limit still keeps its work.
