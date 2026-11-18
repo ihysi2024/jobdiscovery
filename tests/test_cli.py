@@ -14,6 +14,7 @@ def fake_internet(monkeypatch):
     # No real waiting on retries in tests.
     import jobdiscovery.http as h
     monkeypatch.setattr(h.PoliteClient, "_backoff", lambda self, attempt: 0)
+    monkeypatch.setattr(cli, "API_MIN_INTERVAL", {})
 
 
 def test_discover_poll_report(tmp_path, capsys):
@@ -190,3 +191,27 @@ def test_report_groups_board_errors(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "Boards failing to load" in out
     assert "     3  workday         HTTP N for <url>" in out
+
+
+def test_poll_skips_a_hiring_system_that_keeps_throttling(tmp_path, capsys, monkeypatch):
+    import httpx
+    monkeypatch.setattr(cli, "TRANSPORT", httpx.MockTransport(lambda r: httpx.Response(429)))
+    monkeypatch.setattr(cli, "THROTTLE_GIVE_UP", 3)
+    db = str(tmp_path / "jobs.sqlite")
+    cli.main(["--db", db, "add", *[f"https://t{i}.wd1.myworkdayjobs.com/Ext" for i in range(6)]])
+    capsys.readouterr()
+    assert cli.main(["--db", db, "poll", "--concurrency", "1"]) == 0
+    out = capsys.readouterr().out
+    assert "Polled 3 of 6 due boards: 0 ok, 0 gone, 3 errors." in out
+    assert "Skipped 3 boards" in out and "(workday)" in out
+
+
+def test_add_from_seed_file_names_employers(tmp_path, capsys):
+    db = str(tmp_path / "jobs.sqlite")
+    seeds = tmp_path / "seeds.txt"
+    seeds.write_text("# comment\n\nhttps://www.amazon.jobs/\nhttps://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/ | JPMorgan Chase\n")
+    assert cli.main(["--db", db, "add", "--file", str(seeds), "--source", "seed"]) == 0
+    assert "Recognized 2 boards from 2 links (2 new)" in capsys.readouterr().out
+    from jobdiscovery.store import Store
+    names = dict(Store(db).db.execute("SELECT key, company_name FROM boards").fetchall())
+    assert names == {"amazon:amazon": "Amazon", "oracle:jpmc.fa.oraclecloud.com|CX_1001": "JPMorgan Chase"}

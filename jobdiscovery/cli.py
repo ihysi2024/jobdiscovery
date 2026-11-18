@@ -47,6 +47,9 @@ API_HOST_LIMITS = {
     # all Workday sites share one limit.
     ".myworkdayjobs.com": 2,
 }
+# After this many boards in a row on one hiring system answer HTTP 429, skip the
+# rest of that system's boards for this run (they stay due).
+THROTTLE_GIVE_UP = 20
 # Seconds between request starts, per host or group.
 API_MIN_INTERVAL = {".myworkdayjobs.com": 1.0}
 
@@ -174,6 +177,7 @@ async def cmd_poll(args, store: Store) -> int:
         sem = asyncio.Semaphore(args.concurrency)
         started = time.monotonic()
 
+        throttled = {}  # ats -> rate-limited boards in a row this run
         async with PoliteClient(per_host=2, host_limits=API_HOST_LIMITS, min_interval=API_MIN_INTERVAL,
                                 transport=TRANSPORT) as client:
             async def one(board):
@@ -181,6 +185,9 @@ async def cmd_poll(args, store: Store) -> int:
                     if deadline is not None and time.monotonic() >= deadline:
                         totals["stopped_early"] = True
                         return  # stays due; next run picks it up
+                    if throttled.get(board.ats, 0) >= THROTTLE_GIVE_UP:
+                        totals["throttled_skipped"] = totals.get("throttled_skipped", 0) + 1
+                        return  # the hiring system is turning us away this run; stays due
                     totals["attempted"] += 1
                     try:
                         postings = await poll_board(client, board)
@@ -190,8 +197,10 @@ async def cmd_poll(args, store: Store) -> int:
                     except PollError as e:
                         store.mark_error(board, str(e))
                         totals["error"] += 1
+                        throttled[board.ats] = throttled.get(board.ats, 0) + 1 if "HTTP 429" in str(e) else 0
                         log.debug("error %s", e)
                     else:
+                        throttled[board.ats] = 0
                         s = store.apply_poll(board, postings, all_locations=args.all_locations)
                         totals["ok"] += 1
                         totals["nyc_seen"] += s.nyc_jobs
@@ -209,6 +218,10 @@ async def cmd_poll(args, store: Store) -> int:
         totals["open_nyc_after"] = store.summary()["open_nyc_postings"]
         print(f"Polled {totals['attempted']} of {len(boards)} due boards: {totals['ok']} ok, {totals['gone']} gone, "
               f"{totals['error']} errors." + (" Stopped at the time limit; the rest stay due." if totals["stopped_early"] else ""))
+        if totals.get("throttled_skipped"):
+            print(f"Skipped {totals['throttled_skipped']} boards on a hiring system that kept answering "
+                  f"'too many requests' ({', '.join(a for a, n in throttled.items() if n >= THROTTLE_GIVE_UP)}); "
+                  "they stay due for the next run.")
         print(f"NYC postings: {totals['new']} new, {totals['changed']} changed, {totals['unchanged']} unchanged, "
               f"{totals['closed']} closed. {totals['open_nyc_after']} open now.")
         return totals
