@@ -65,7 +65,7 @@ export async function searchJobs(q: JobQuery): Promise<JobPage> {
   let query = db()
     .from("jobs_search")
     .select("id, board_key, company_name, title, first_seen_at, industry, role_family, seniority, mode, " +
-            "salary_min_annual, salary_max_annual, has_process, interview_process, summary", { count: "exact" });
+            "salary_min_annual, salary_max_annual, has_process, interview_process, summary, skills", { count: "exact" });
   if (q.ids?.length) query = query.in("id", q.ids.map(Number));
   const skip = (q.excludeIds ?? []).filter((x) => /^\d+$/.test(x)).slice(0, 500);
   if (skip.length) query = query.not("id", "in", `(${skip.join(",")})`);
@@ -90,7 +90,9 @@ export async function searchJobs(q: JobQuery): Promise<JobPage> {
     if (facets[f.facet]) facets[f.facet].push({ value: f.value, n: f.n } as Facet);
   }
   Object.values(facets).forEach((list) => list.sort((a, b) => b.n - a.n));
-  const jobs = ((data ?? []) as unknown as SearchRow[]).map((r) => ({ ...toSummary({ ...r, work_mode: r.mode }), process: r.has_process }));
+  const jobs = ((data ?? []) as unknown as SearchRow[]).map((r) => ({
+    ...toSummary({ ...r, work_mode: r.mode }), process: r.has_process, skills: parse<string[]>(r.skills) ?? [],
+  }));
   return { jobs, total: count ?? 0, facets };
 }
 
@@ -196,6 +198,7 @@ export const supabaseSource: DataSource = {
     ].filter(Boolean);
     const detail: JobDetail = {
       ...s,
+      skills,
       url: r.url || "",
       postedLabel: "Posted " + ago(s.days),
       payLabel: s.lo != null ? (s.lo === s.hi ? `$${s.lo}k` : `$${s.lo}k–${s.hi}k`) : "",

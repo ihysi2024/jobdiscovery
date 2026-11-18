@@ -75,6 +75,9 @@ export default class JobDetail extends React.Component {
 </div>
 {" "}
 <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "6px", fontSize: "13px", fontWeight: "500" }}>
+{(typeof vm.job.fit === "number") ? (<span title="How many of the things you told us this job lines up with" style={{ padding: "5px 10px", borderRadius: "6px", fontWeight: 600, background: vm.job.fit >= 75 ? "#7A3E6E" : vm.job.fit >= 50 ? "#F3E6EF" : "#FFFFFF", color: vm.job.fit >= 75 ? "#FFFFFF" : vm.job.fit >= 50 ? "#5E2A54" : "#665D63", border: vm.job.fit >= 50 ? "none" : "1px solid #EFE9D8" }}>
+{vm.job.fit + "% match"}
+</span>) : null}
 {(vm.hasPay) ? (<span style={{ padding: "5px 10px", borderRadius: "6px", background: "#F7F2E4" }}>
 {vm.job.payLabel}
 </span>) : null}

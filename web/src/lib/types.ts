@@ -27,6 +27,7 @@ export interface JobSummary {
   why: string;             // "why you might be interested" when ranked; otherwise the job's summary
   summary?: string;        // the job's own one-line summary
   fit?: number | null;     // 0-100 match for the signed-in person (Best match only)
+  skills?: string[];
   possible?: boolean;      // a stretch fit rather than a strong match
 }
 

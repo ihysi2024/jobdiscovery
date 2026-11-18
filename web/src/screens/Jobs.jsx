@@ -246,8 +246,8 @@ export default function Jobs({ page, query, error, signedIn = false }) {
                         {j.company} · {j.loc}
                         {typeof j.fit === "number" || !pay ? <> · <span style={{ color: pay ? C.ink : C.soft, fontWeight: pay ? 500 : 400 }}>{pay || "Pay not listed"}</span></> : null}
                       </div>
-                      {query.sort === "match" && j.why ? <div style={{ color: "#5E2A54", fontWeight: 500, fontSize: "13px" }}>{j.why}</div> : null}
-                      {(query.sort === "match" ? j.summary : j.why) ? <div style={{ color: "#4D444B", lineHeight: 1.55 }}>{query.sort === "match" ? j.summary : j.why}</div> : null}
+                      {query.sort === "match" && j.why ? <div style={{ color: "#5E2A54", lineHeight: 1.55 }}>{j.why}</div> : null}
+                      {(query.sort === "match" ? j.summary : j.why) ? <div style={{ color: query.sort === "match" ? C.muted : "#4D444B", lineHeight: 1.55, fontSize: query.sort === "match" ? "13px" : "14px" }}>{query.sort === "match" ? j.summary : j.why}</div> : null}
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "2px" }}>
                         <span style={{ padding: "4px 10px", borderRadius: "6px", background: C.chip, fontSize: "12px" }}>{j.roleLabel}</span>
                         {j.lvl && j.lvl !== "unknown" ? <span style={{ padding: "4px 10px", borderRadius: "6px", background: C.chip, fontSize: "12px" }}>{LEVEL[j.lvl] || j.lvl}</span> : null}
