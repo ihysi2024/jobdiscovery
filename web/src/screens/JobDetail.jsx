@@ -1,0 +1,349 @@
+"use client";
+/* Ported from the mockup (JobDetail.dc.html). Layout and behavior match the design. */
+import React from "react";
+import Link from "next/link";
+import { getUser, setUser } from "@/lib/user-store";
+
+export default class JobDetail extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { showFull: false };
+  }
+  componentDidMount() {
+    this.setState({ liked: getUser('liked', []).indexOf(this.props.job.id) >= 0 });
+  }
+  renderVals() {
+    const job = this.props.job;
+    const showFull = this.state.showFull;
+    const liked = !!this.state.liked;
+    const stats = job.companyStats;
+    return {
+      job, showFull, fullLabel: showFull ? 'Show less' : 'Read the full posting',
+      toggleFull: () => this.setState({ showFull: !showFull }),
+      liked, likeLabel: liked ? 'Liked ' : 'Like',
+      toggleLike: () => {
+        const list = getUser('liked', []);
+        setUser('liked', liked ? list.filter((x) => x !== job.id) : list.concat(job.id));
+        this.setState({ liked: !liked });
+      },
+      companyHref: '/companies/' + encodeURIComponent(job.companyId),
+      metaLine: ' · ' + job.loc + ' · ' + job.postedLabel,
+      hasPay: !!job.payLabel, hasCompanyLine: !!job.companyLine,
+      hasWhy: job.whyParas.length > 0,
+      hasAbout: !!job.aboutText || job.aboutBullets.length > 0,
+      hasPosting: job.posting.length > 0,
+      posting: job.posting,
+      hasSteps: job.steps_.length > 0,
+      hasTimeline: !!job.timeline,
+      timelineNote: job.timelineSource ? ' from application to offer · ' + job.timelineSource : ' from application to offer',
+      steps: job.steps_.map((x, i, arr) => Object.assign({}, x, { final: i === arr.length - 1, mid: i < arr.length - 1 })),
+      hasContacts: job.contactGroups.length > 0,
+      groups: job.contactGroups,
+      peopleCount: job.contactGroups.reduce((n, g) => n + g.people.length, 0),
+      hasStats: !!stats,
+      stats: stats || {},
+    };
+  }
+
+  render() {
+    const vm = this.renderVals();
+    return (<>
+<style>{"\nbody{margin:0}\na{color:#7A3E6E}a:hover{color:#5E2A54}\n"}</style>
+<div style={{ minHeight: "100vh", background: "#FFFDF5", color: "#2A2028", fontFamily: "Inter, system-ui, sans-serif", fontSize: "14px" }}>
+<header style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "32px", padding: "16px 40px", borderBottom: "1px solid #EFE9D8" }}>
+<div style={{ fontFamily: "'Instrument Serif', serif", fontSize: "26px", letterSpacing: "-0.5px" }}>
+{"aligned"}
+</div>
+{" "}
+<nav style={{ display: "flex", gap: "24px", fontWeight: "500" }} aria-label="Main">
+<Link href="/jobs" style={{ textDecoration: "none", color: "#2A2028", borderBottom: "2px solid #7A3E6E", padding: "6px 0" }}>
+{"Jobs"}
+</Link>
+{" "}
+<Link href="/my-jobs" style={{ textDecoration: "none", color: "#665D63", padding: "6px 0" }}>
+{"My jobs"}
+</Link>
+</nav>
+</header>
+{" "}
+<div style={{ maxWidth: "1200px", margin: "0 auto", padding: "24px 40px 72px", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: "28px" }}>
+<Link href="/jobs" style={{ color: "#665D63", textDecoration: "none", fontWeight: "500" }}>
+{"← All matches"}
+</Link>
+{" "}
+<section style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "24px", paddingBottom: "28px", borderBottom: "1px solid #EFE9D8" }}>
+<div style={{ display: "flex", gap: "20px", alignItems: "flex-start" }}>
+<div style={{ width: "64px", height: "64px", borderRadius: "14px", background: "#F7F2E4", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "600", fontSize: "20px", color: "#4D444B" }}>
+{vm.job.mono}
+</div>
+{" "}
+<div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+<h1 style={{ margin: "0", fontSize: "28px", fontWeight: "600", letterSpacing: "-0.5px" }}>
+{vm.job.title}
+</h1>
+{" "}
+<div style={{ fontSize: "15px", color: "#665D63" }}>
+<Link href={vm.companyHref} style={{ color: "#2A2028", fontWeight: "500" }}>
+{vm.job.company}
+</Link>
+{vm.metaLine}
+</div>
+{" "}
+<div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "6px", fontSize: "13px", fontWeight: "500" }}>
+{(vm.hasPay) ? (<span style={{ padding: "5px 10px", borderRadius: "6px", background: "#F7F2E4" }}>
+{vm.job.payLabel}
+</span>) : null}
+{" "}
+<span style={{ padding: "5px 10px", borderRadius: "6px", background: "#F7F2E4" }}>
+{vm.job.levelLabel}
+</span>
+{" "}
+{(vm.hasCompanyLine) ? (<span style={{ padding: "5px 10px", borderRadius: "6px", background: "#F7F2E4" }}>
+{vm.job.companyLine}
+</span>) : null}
+</div>
+</div>
+</div>
+{" "}
+<div style={{ display: "flex", gap: "10px" }}>
+<button type="button" onClick={vm.toggleLike} aria-pressed={vm.liked} style={{ display: "inline-flex", alignItems: "center", gap: "8px", height: "44px", padding: "0 22px", borderRadius: "10px", border: "none", background: "#7A3E6E", color: "#FFFFFF", font: "600 14px Inter, sans-serif", cursor: "pointer" }}>
+<svg width="16" height="16" viewBox="0 0 24 24" fill={vm.liked ? "#FFFFFF" : "none"} stroke="#FFFFFF" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
+<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" />
+</svg>
+{vm.likeLabel}
+</button>
+</div>
+</section>
+{" "}
+<div style={{ display: "flex", flexWrap: "wrap", gap: "48px", alignItems: "flex-start" }}>
+<main style={{ flex: "999 1 560px", minWidth: "0", display: "flex", flexDirection: "column", gap: "40px" }}>
+{(vm.hasWhy) ? (<section style={{ background: "#FBF5FA", borderRadius: "16px", padding: "28px 32px", display: "flex", flexDirection: "column", gap: "12px" }}>
+<h2 style={{ margin: "0", fontFamily: "'Instrument Serif', serif", fontWeight: "400", fontSize: "30px", lineHeight: "1.1", color: "#4A2141" }}>
+{"Why you might be interested"}
+</h2>
+{vm.job.whyParas.map((t, i) => (
+<p key={i} style={{ margin: "0", fontSize: "16px", lineHeight: "1.65", color: "#2D242B" }}>
+{t}
+</p>))}
+</section>) : null}
+{" "}
+<section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+<h2 style={{ margin: "0", fontSize: "18px", fontWeight: "600" }}>
+{"About the role"}
+</h2>
+{" "}
+<p style={{ margin: "0", fontSize: "15px", lineHeight: "1.65", color: "#4D444B" }}>
+{vm.job.aboutText}
+</p>
+{" "}
+{(vm.job.aboutBullets.length) ? (<ul style={{ margin: "0", paddingLeft: "20px", fontSize: "15px", lineHeight: "1.8", color: "#4D444B" }}>
+{vm.job.aboutBullets.map((x, i) => (<li key={i}>
+{x}
+</li>))}
+</ul>) : null}
+{" "}
+{(vm.showFull) ? (<>
+<div style={{ display: "flex", flexDirection: "column", gap: "20px", paddingTop: "8px" }}>
+{(vm.posting || []).map((p, p$i0) => (<React.Fragment key={p$i0}>
+<section style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+<h3 style={{ margin: "0", fontSize: "15px", fontWeight: "600" }}>
+{p.h}
+</h3>
+{" "}
+{(p.text) ? (<>
+<p style={{ margin: "0", fontSize: "15px", lineHeight: "1.65", color: "#4D444B" }}>
+{p.text}
+</p>
+</>) : null}
+{" "}
+{(p.items) ? (<>
+<ul style={{ margin: "0", paddingLeft: "20px", fontSize: "15px", lineHeight: "1.8", color: "#4D444B" }}>
+{(p.items || []).map((x, x$i1) => (<React.Fragment key={x$i1}>
+<li>
+{x}
+</li>
+</React.Fragment>))}
+</ul>
+</>) : null}
+</section>
+</React.Fragment>))}
+</div>
+</>) : null}
+{" "}
+{(vm.hasPosting) ? (<><button type="button" onClick={vm.toggleFull} aria-expanded={vm.showFull} style={{ alignSelf: "flex-start", height: "40px", padding: "0", border: "none", background: "transparent", font: "500 15px Inter, sans-serif", color: "#7A3E6E", cursor: "pointer" }}>
+{vm.fullLabel}
+</button></>) : null}
+</section>
+{" "}
+{(vm.hasSteps) ? (<><section style={{ display: "flex", flexDirection: "column", gap: "16px", paddingTop: "24px", borderTop: "1px solid #EFE9D8" }}>
+<div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: "8px" }}>
+<h2 style={{ margin: "0", fontSize: "18px", fontWeight: "600" }}>
+{"Interview process"}
+</h2>
+{" "}
+{(vm.hasTimeline) ? (<span style={{ color: "#665D63" }}>
+{"About "}
+<strong style={{ color: "#2A2028", fontWeight: "600" }}>
+{vm.job.timeline}
+</strong>
+{vm.timelineNote}
+</span>) : null}
+</div>
+{" "}
+<ol style={{ listStyle: "none", margin: "0", padding: "0", display: "flex", flexDirection: "column" }}>
+{(vm.steps || []).map((st, st$i2) => (<React.Fragment key={st$i2}>
+<li style={{ display: "flex", gap: "16px" }}>
+<div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "16px", flex: "none" }}>
+{(st.final) ? (<>
+<div style={{ width: "14px", height: "14px", marginTop: "3px", borderRadius: "7px", background: "#7A3E6E" }} />
+</>) : null}
+{" "}
+{(st.mid) ? (<>
+<div style={{ width: "14px", height: "14px", marginTop: "3px", borderRadius: "7px", border: "2px solid #7A3E6E", background: "#FFFFFF", boxSizing: "border-box" }} />
+{" "}
+<div style={{ flex: "1", width: "2px", background: "#E3CBDD", minHeight: "20px" }} />
+</>) : null}
+</div>
+{" "}
+<div style={{ flex: "1", paddingBottom: "18px", display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "4px 16px" }}>
+<span style={{ fontSize: "15px", fontWeight: "600" }}>
+{st.name}
+</span>
+{" "}
+<span style={{ color: "#665D63" }}>
+{st.meta}
+</span>
+</div>
+</li>
+</React.Fragment>))}
+</ol>
+</section></>) : null}
+</main>
+{" "}
+<aside style={{ flex: "1 1 340px", maxWidth: "400px", display: "flex", flexDirection: "column", gap: "24px" }} aria-label="Network for this role">
+{(vm.hasContacts) ? (<><section style={{ border: "1px solid #EFE9D8", borderRadius: "16px", padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
+<div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+<h2 style={{ margin: "0", fontSize: "18px", fontWeight: "600" }}>
+{"Your network for this role"}
+</h2>
+{" "}
+<p style={{ margin: "0", color: "#665D63", lineHeight: "1.5" }}>
+{"People who can tell you what the job is really like, or put your name forward."}
+</p>
+</div>
+{" "}
+{(vm.groups || []).map((g, g$i3) => (<React.Fragment key={g$i3}>
+<div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+<div style={{ fontSize: "12px", fontWeight: "600", letterSpacing: "0.06em", textTransform: "uppercase", color: "#665D63" }}>
+{g.label}
+</div>
+{" "}
+{(g.people || []).map((p, p$i4) => (<React.Fragment key={p$i4}>
+<div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+<div style={{ width: "40px", height: "40px", flex: "none", borderRadius: "20px", background: "#F3E6EF", color: "#5E2A54", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "600", fontSize: "13px" }}>
+{p.ini}
+</div>
+{" "}
+<div style={{ flex: "1", minWidth: "0", display: "flex", flexDirection: "column", gap: "3px" }}>
+<div style={{ fontWeight: "600" }}>
+{p.name}
+</div>
+{" "}
+<div style={{ color: "#665D63", fontSize: "13px" }}>
+{p.title}
+</div>
+{" "}
+<div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
+<a href={`mailto:${p.email}`} style={{ fontSize: "13px", fontWeight: "500", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+{p.email}
+</a>
+{" "}
+<button type="button" aria-label={`Copy email for ${p.name}`} style={{ width: "28px", height: "28px", flex: "none", border: "none", background: "transparent", borderRadius: "6px", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#665D63" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+<rect x="9" y="9" width="12" height="12" rx="2" />
+<path d="M5 15V5a2 2 0 0 1 2-2h10" />
+</svg>
+</button>
+</div>
+{" "}
+<div style={{ fontSize: "12px", color: "#665D63" }}>
+{p.source}
+</div>
+</div>
+{" "}
+<a href={p.li} target="_blank" rel="noopener noreferrer" aria-label={`LinkedIn profile of ${p.name} (opens in new tab)`} style={{ fontSize: "12px", fontWeight: "600", color: "#665D63", textDecoration: "none", border: "1px solid #E6DED0", borderRadius: "6px", padding: "4px 7px" }}>
+{"in"}
+</a>
+</div>
+</React.Fragment>))}
+</div>
+</React.Fragment>))}
+{" "}
+{(vm.peopleCount > 4) ? (<a href="#" style={{ fontWeight: "500" }}>
+{`See all ${vm.peopleCount} people`}
+</a>) : null}
+</section></>) : (<section style={{ border: "1px solid #EFE9D8", borderRadius: "16px", padding: "24px", display: "flex", flexDirection: "column", gap: "8px" }}>
+<h2 style={{ margin: "0", fontSize: "18px", fontWeight: "600" }}>
+{"Your network for this role"}
+</h2>
+<p style={{ margin: "0", color: "#665D63", lineHeight: "1.5" }}>
+{"We haven't found people for this role yet."}
+</p>
+</section>)}
+{" "}
+<Link href={vm.companyHref} style={{ display: "flex", flexDirection: "column", gap: "14px", border: "1px solid #EFE9D8", borderRadius: "16px", padding: "24px", textDecoration: "none", color: "#2A2028" }}>
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+<span style={{ fontSize: "18px", fontWeight: "600" }}>
+{vm.job.company + " at a glance"}
+</span>
+{" "}
+<span style={{ color: "#7A3E6E", fontWeight: "500" }}>
+{"Dashboard →"}
+</span>
+</div>
+{" "}
+{(vm.hasStats) ? (<><div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "16px" }}>
+<div>
+<div style={{ fontSize: "20px", fontWeight: "600" }}>
+{vm.stats.employees}
+</div>
+<div style={{ color: "#665D63", fontSize: "13px" }}>
+{"Employees"}
+</div>
+</div>
+{" "}
+<div>
+<div style={{ fontSize: "20px", fontWeight: "600" }}>
+{vm.stats.valuation}
+</div>
+<div style={{ color: "#665D63", fontSize: "13px" }}>
+{"Last valuation"}
+</div>
+</div>
+{" "}
+<div>
+<div style={{ fontSize: "20px", fontWeight: "600" }}>
+{vm.stats.tenure}
+</div>
+<div style={{ color: "#665D63", fontSize: "13px" }}>
+{"Avg tenure"}
+</div>
+</div>
+{" "}
+<div>
+<div style={{ fontSize: "20px", fontWeight: "600" }}>
+{vm.stats.promotion}
+</div>
+<div style={{ color: "#665D63", fontSize: "13px" }}>
+{"Avg promotion cycle"}
+</div>
+</div>
+</div></>) : (<div style={{ color: "#665D63" }}>{"See every open role at " + vm.job.company + "."}</div>)}
+</Link>
+</aside>
+</div>
+</div>
+</div>
+</>);
+  }
+}

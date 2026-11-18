@@ -1,0 +1,178 @@
+// Reads the jobs database (written by the Python poller) through the read-only
+// `job_listings` view: open New York City jobs with their classification.
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Company, DataSource, JobDetail, JobSummary, PostingSection, WorkMode } from "../types";
+
+let client: SupabaseClient | null = null;
+function db(): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) throw new Error("Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (see .env.example).");
+  client ??= createClient(url, key, { auth: { persistSession: false } });
+  return client;
+}
+
+const LIST_COLS =
+  "id, board_key, company_name, title, workplace_type, first_seen_at, industry, role_family, seniority, " +
+  "work_mode, salary_min_annual, salary_max_annual, interview_process, summary";
+
+interface Row {
+  id: number; board_key: string; company_name: string; title: string; workplace_type: string | null;
+  first_seen_at: string; industry: string | null; role_family: string | null; seniority: string | null;
+  work_mode: string | null; salary_min_annual: number | null; salary_max_annual: number | null;
+  interview_process: string | null; summary: string | null;
+  // detail only
+  url?: string | null; description_text?: string | null; skills?: string | null;
+  years_experience_min?: number | null; degree_required?: string | null; locations?: string | null;
+}
+
+const LEVEL: Record<string, string> = {
+  intern: "Internship", entry: "Entry level", mid: "Mid-level", senior: "Senior", staff_principal: "Staff+",
+  manager: "Manager", director: "Director", executive: "Executive", unknown: "Level not stated",
+};
+const MODE: Record<WorkMode, string> = { onsite: "Onsite", hybrid: "Hybrid", remote: "Remote" };
+
+const initials = (name: string) =>
+  name.split(/[\s\-_.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
+const parse = <T,>(s: string | null | undefined): T | null => {
+  if (!s) return null;
+  try { return JSON.parse(s) as T; } catch { return null; }
+};
+const k = (n: number | null) => (n == null ? null : Math.round(n / 1000));
+
+function mode(r: Row): WorkMode {
+  const m = (r.work_mode || r.workplace_type || "").toLowerCase();
+  return m.includes("remote") ? "remote" : m.includes("hybrid") ? "hybrid" : "onsite";
+}
+
+type Process = { stages: { stage: string; detail: string }[]; timeline: string | null };
+
+export function toSummary(r: Row): JobSummary {
+  const l = mode(r);
+  const proc = parse<Process>(r.interview_process);
+  const lvl = r.seniority || "unknown";
+  return {
+    id: String(r.id),
+    mono: initials(r.company_name),
+    title: r.title,
+    company: r.company_name,
+    companyId: r.board_key,
+    loc: "New York · " + MODE[l],
+    stage: "",
+    lo: k(r.salary_min_annual),
+    hi: k(r.salary_max_annual),
+    role: r.role_family || "Not classified yet",
+    roleLabel: r.role_family || "Not classified yet",
+    ind: r.industry || "Not classified yet",
+    indLabel: r.industry || "Not classified yet",
+    l,
+    lvl,
+    lvlLabel: LEVEL[lvl] ?? lvl,
+    process: !!proc?.stages?.length,
+    steps: proc?.stages?.length ?? 0,
+    contacts: 0,
+    days: Math.max(0, (Date.now() - Date.parse(r.first_seen_at)) / 86_400_000),
+    why: r.summary || "",
+    possible: false,
+  };
+}
+
+/** Turn plain posting text into sections: short lines without a final period read as headings. */
+export function sections(text: string): PostingSection[] {
+  const lines = text.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  const out: PostingSection[] = [];
+  let cur: PostingSection | null = null;
+  const isHeading = (s: string) => s.length <= 60 && !/[.!?,;]$/.test(s) && /^[A-Z0-9]/.test(s) && s.split(" ").length <= 8;
+  for (const line of lines) {
+    if (isHeading(line)) {
+      cur = { h: line.replace(/:$/, "") };
+      out.push(cur);
+      continue;
+    }
+    if (!cur) { cur = { h: "" }; out.push(cur); }
+    if (cur.text && !cur.items) { cur.items = [cur.text, line]; delete cur.text; }
+    else if (cur.items) cur.items.push(line);
+    else cur.text = line;
+  }
+  return out.filter((s) => s.text || s.items?.length);
+}
+
+function ago(days: number) {
+  if (days < 1) return "today";
+  if (days < 2) return "1 day ago";
+  if (days < 7) return Math.floor(days) + " days ago";
+  const w = Math.floor(days / 7);
+  return w === 1 ? "1 week ago" : w + " weeks ago";
+}
+
+export const supabaseSource: DataSource = {
+  name: "supabase",
+
+  async listJobs(q) {
+    const { data, error } = await db()
+      .from("job_listings")
+      .select(LIST_COLS)
+      .order("first_seen_at", { ascending: false })
+      .limit(q?.limit ?? 1000);
+    if (error) throw new Error("Couldn't load jobs: " + error.message);
+    return (data as unknown as Row[]).map(toSummary);
+  },
+
+  async getJob(id) {
+    if (!/^\d+$/.test(id)) return null;
+    const { data, error } = await db()
+      .from("job_listings")
+      .select(LIST_COLS + ", url, description_text, skills, years_experience_min, degree_required, locations")
+      .eq("id", Number(id))
+      .maybeSingle();
+    if (error) throw new Error("Couldn't load the job: " + error.message);
+    if (!data) return null;
+    const r = data as unknown as Row;
+    const s = toSummary(r);
+    const proc = parse<Process>(r.interview_process);
+    const skills = parse<string[]>(r.skills) ?? [];
+    const bullets = [
+      r.years_experience_min != null ? `${r.years_experience_min}+ years of experience` : "",
+      r.degree_required && r.degree_required !== "none" && r.degree_required !== "unknown" ? `Degree: ${r.degree_required.replace(/_/g, " ")}` : "",
+      skills.length ? "Skills: " + skills.join(", ") : "",
+    ].filter(Boolean);
+    const detail: JobDetail = {
+      ...s,
+      url: r.url || "",
+      postedLabel: "Posted " + ago(s.days),
+      payLabel: s.lo != null ? (s.lo === s.hi ? `$${s.lo}k` : `$${s.lo}k–${s.hi}k`) : "",
+      levelLabel: s.lvlLabel,
+      companyLine: "",
+      whyParas: [],
+      aboutText: r.summary || "",
+      aboutBullets: bullets,
+      posting: sections(r.description_text || ""),
+      timeline: proc?.timeline || "",
+      timelineSource: proc ? "from the posting" : "",
+      steps_: (proc?.stages ?? []).map((st) => ({ name: st.stage.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()), meta: st.detail })),
+      contactGroups: [],
+      companyStats: null,
+    };
+    return detail;
+  },
+
+  async getCompany(id) {
+    const { data, error } = await db()
+      .from("job_listings")
+      .select("id, title, company_name, work_mode, workplace_type")
+      .eq("board_key", id)
+      .order("first_seen_at", { ascending: false })
+      .limit(200);
+    if (error) throw new Error("Couldn't load the company: " + error.message);
+    const rows = (data ?? []) as unknown as Row[];
+    if (!rows.length) return null;
+    const company: Company = {
+      id,
+      name: rows[0]!.company_name,
+      mono: initials(rows[0]!.company_name),
+      openRoles: rows.map((r) => ({ id: String(r.id), title: r.title, loc: "New York · " + MODE[mode(r)] })),
+      stats: null,
+    };
+    return company;
+  },
+};
