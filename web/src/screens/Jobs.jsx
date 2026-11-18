@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { likeJob, trackedPostingIds, unlikeJob } from "@/lib/tracker";
+import { ensureProfileEmbedding } from "@/lib/profile";
 
 const C = { plum: "#7A3E6E", ink: "#2A2028", muted: "#665D63", soft: "#7A7078", line: "#EFE9D8", chip: "#F7F2E4", plumSoft: "#F3E6EF" };
 const MODE = { onsite: "Onsite", hybrid: "Hybrid", remote: "Remote" };
@@ -28,12 +29,12 @@ function ageOf(days) {
 }
 const payOf = (j) => (j.lo == null ? "" : j.lo === j.hi ? `$${j.lo}k` : `$${j.lo}k–${j.hi}k`);
 
-function toParams(q) {
+function toParams(q, defaultSort) {
   const p = new URLSearchParams();
   if (q.q) p.set("q", q.q);
   for (const k of ["role", "ind", "mode", "lvl"]) (q[k] || []).forEach((v) => p.append(k, v));
   if (q.process) p.set("process", "1");
-  if (q.sort && q.sort !== "new") p.set("sort", q.sort);
+  if (q.sort && q.sort !== defaultSort) p.set("sort", q.sort);
   if (q.page) p.set("page", String(q.page + 1));
   return p.toString();
 }
@@ -46,7 +47,8 @@ function Heart({ on }) {
   );
 }
 
-export default function Jobs({ page, query, error }) {
+export default function Jobs({ page, query, error, signedIn = false }) {
+  const defaultSort = signedIn ? "match" : "new";
   const router = useRouter();
   const path = usePathname();
   const [pending, start] = React.useTransition();
@@ -57,10 +59,16 @@ export default function Jobs({ page, query, error }) {
 
   React.useEffect(() => { setText(query.q || ""); }, [query.q]);
   React.useEffect(() => { trackedPostingIds().then(setLiked).catch(() => {}); }, []);
+  React.useEffect(() => {
+    // A resume saved before matching existed gets its fingerprint now; then re-rank.
+    if (!signedIn) return;
+    ensureProfileEmbedding().then((made) => { if (made && query.sort === "match") router.refresh(); }).catch(() => {});
+  }, [signedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = (patch) => {
     const next = { ...query, page: 0, ...patch };
-    start(() => router.push(path + (toParams(next) ? "?" + toParams(next) : ""), { scroll: "page" in patch }));
+    const qs = toParams(next, defaultSort);
+    start(() => router.push(path + (qs ? "?" + qs : ""), { scroll: "page" in patch }));
   };
   const toggle = (key, value) => {
     const cur = query[key] || [];
@@ -141,16 +149,17 @@ export default function Jobs({ page, query, error }) {
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "12px", paddingBottom: "16px", borderBottom: `1px solid ${C.line}` }}>
             <div>
               <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 600, letterSpacing: "-0.2px" }}>
-                {total.toLocaleString("en-US")} open {total === 1 ? "job" : "jobs"} in New York{query.q ? ` for “${query.q}”` : ""}
+                {total.toLocaleString("en-US")} open {total === 1 ? "job" : "jobs"} in New York{query.q ? ` for “${query.q}”` : ""}{query.sort === "match" ? ", best match first" : ""}
               </h1>
               <div style={{ marginTop: "4px", color: C.muted }}>
-                Straight from employers' career pages, checked daily.{" "}
+                {query.sort === "match" ? "Ranked by your resume, priorities, directions and the roles you liked. " : "Straight from employers' career pages, checked daily. "}
                 {liked.size ? <Link href="/my-jobs">{liked.size} in My jobs →</Link> : null}
               </div>
             </div>
             <label style={{ display: "flex", alignItems: "center", gap: "8px", color: C.muted }}>
               Sort
-              <select value={query.sort || "new"} onChange={(e) => go({ sort: e.target.value })} style={{ height: "36px", padding: "0 10px", border: "1px solid #E6DED0", borderRadius: "8px", background: "#FFFFFF", font: "400 14px Inter, sans-serif", color: C.ink }}>
+              <select value={query.sort || defaultSort} onChange={(e) => go({ sort: e.target.value })} style={{ height: "36px", padding: "0 10px", border: "1px solid #E6DED0", borderRadius: "8px", background: "#FFFFFF", font: "400 14px Inter, sans-serif", color: C.ink }}>
+                {signedIn ? <option value="match">Best match</option> : null}
                 <option value="new">Newest first</option>
                 <option value="pay">Highest pay</option>
               </select>
@@ -173,7 +182,8 @@ export default function Jobs({ page, query, error }) {
                         {pay ? <div style={{ fontWeight: 500 }}>{pay}</div> : <div style={{ color: C.soft }}>Pay not listed</div>}
                       </div>
                       <div style={{ color: C.muted }}>{j.company} · {j.loc}</div>
-                      {j.why ? <div style={{ color: "#4D444B", lineHeight: 1.55 }}>{j.why}</div> : null}
+                      {query.sort === "match" && j.why ? <div style={{ color: "#5E2A54", fontWeight: 500, fontSize: "13px" }}>{j.why}</div> : null}
+                      {(query.sort === "match" ? j.summary : j.why) ? <div style={{ color: "#4D444B", lineHeight: 1.55 }}>{query.sort === "match" ? j.summary : j.why}</div> : null}
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "2px" }}>
                         <span style={{ padding: "4px 10px", borderRadius: "6px", background: C.chip, fontSize: "12px" }}>{j.roleLabel}</span>
                         {j.lvl && j.lvl !== "unknown" ? <span style={{ padding: "4px 10px", borderRadius: "6px", background: C.chip, fontSize: "12px" }}>{LEVEL[j.lvl] || j.lvl}</span> : null}

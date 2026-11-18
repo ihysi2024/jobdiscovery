@@ -48,4 +48,6 @@ jobs:
           psql "$DATABASE_URL" -c "select format_type(atttypid, atttypmod) as embedding_type from pg_attribute where attrelid = 'job_features'::regclass and attname = 'embedding'" \
             -c "select count(*) as labeled, count(embedding) as with_embedding, count(distinct model) as models from job_features where processed_at is not null" \
             -c "select (select count(*) from profiles) as profiles, (select count(*) from preferences) as preferences, (select count(*) from job_feedback) as feedback, (select count(*) from tracked_jobs) as tracked, (select count(*) from plans) as plans" \
-            -c "select extversion as pgvector from pg_extension where extname = 'vector'"
+            -c "select extversion as pgvector from pg_extension where extname = 'vector'" \
+            -c "select (select count(*) from profiles where embedding is not null) as profiles_with_embedding" \
+            -c "\\timing on" -c "select count(*) as ranked_rows, max(total) as total, round(max(score)::numeric, 3) as top_score from match_jobs(p_limit => 50)"

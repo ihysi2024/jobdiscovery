@@ -2,7 +2,7 @@
 /* Ported from the mockup (Main.dc.html). Layout and behavior match the design. */
 import React from "react";
 import { useRouter } from "next/navigation";
-import { EMPTY_PROFILE, loadProfile, saveProfile, uploadResume } from "@/lib/profile";
+import { EMPTY_PROFILE, loadProfile, saveProfile, saveProfileEmbedding, uploadResume } from "@/lib/profile";
 import { extractText, kindOf } from "@/lib/resume/extract.mjs";
 import { parseResume } from "@/lib/resume/parse.mjs";
 
@@ -120,6 +120,8 @@ class OnboardingResume extends React.Component {
         this.setState({ saving: true, saveError: '' });
         try {
           await saveProfile(this.state.data);
+          // Runs in the background while they answer the next steps.
+          saveProfileEmbedding(this.state.data).catch((e) => console.warn('match profile not saved', e));
           this.props.router.push('/onboarding/priorities');
         } catch (e) {
           this.setState({ saving: false, saveError: e.message });

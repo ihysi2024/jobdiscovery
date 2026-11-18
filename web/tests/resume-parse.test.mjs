@@ -118,3 +118,9 @@ test("splitRoleOrg", () => {
   assert.deepEqual(splitRoleOrg("Acme Corp | Product Manager"), { role: "Product Manager", org: "Acme Corp" });
   assert.deepEqual(splitRoleOrg("Data Analyst at City of New York"), { role: "Data Analyst", org: "City of New York" });
 });
+
+test("profileText mirrors the job text shape", async () => {
+  const { profileText } = await import("../src/lib/embed.mjs");
+  const t = profileText({ headline: "Registered Nurse", exp: [{ role: "Registered Nurse", org: "Mount Sinai" }], edu: [], skills: ["ACLS", "BLS"], resumeText: "x" });
+  assert.match(t, /^Registered Nurse\nRegistered Nurse at Mount Sinai\nSkills: ACLS, BLS\nx$/);
+});

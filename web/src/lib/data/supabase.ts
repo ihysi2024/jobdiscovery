@@ -66,6 +66,7 @@ export async function searchJobs(q: JobQuery): Promise<JobPage> {
     .from("jobs_search")
     .select("id, board_key, company_name, title, first_seen_at, industry, role_family, seniority, mode, " +
             "salary_min_annual, salary_max_annual, has_process, interview_process, summary", { count: "exact" });
+  if (q.ids?.length) query = query.in("id", q.ids.map(Number));
   if (q.role?.length) query = query.in("role_family", q.role);
   if (q.ind?.length) query = query.in("industry", q.ind);
   if (q.mode?.length) query = query.in("mode", q.mode);

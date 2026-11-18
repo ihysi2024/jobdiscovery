@@ -24,7 +24,8 @@ export interface JobSummary {
   steps: number;
   contacts: number;
   days: number;            // days since first seen
-  why: string;             // one line on why it might fit; the matcher fills this in later
+  why: string;             // "why you might be interested" when ranked; otherwise the job's summary
+  summary?: string;        // the job's own one-line summary
   possible?: boolean;      // a stretch fit rather than a strong match
 }
 
@@ -55,7 +56,7 @@ export interface MarketRow {
   openings: number; withPay: number; payLo: number | null; payHi: number | null;
 }
 
-export type JobSort = "new" | "pay";
+export type JobSort = "match" | "new" | "pay";
 
 /** Filters for the job list; empty lists mean "any". */
 export interface JobQuery {
@@ -69,6 +70,7 @@ export interface JobQuery {
   page?: number;      // 0-based
   pageSize?: number;
   limit?: number;     // legacy: first N newest
+  ids?: string[];     // only these jobs (used to load ranked results)
 }
 
 export interface Facet { value: string; n: number }
