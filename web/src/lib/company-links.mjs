@@ -2,11 +2,21 @@
 // know the address (their own site, the posting); elsewhere we link to a search,
 // rather than guess a page that may be wrong.
 
-const HIRING_HOSTS = /(greenhouse\.io|lever\.co|ashbyhq\.com|myworkdayjobs\.com|myworkdaysite\.com|smartrecruiters\.com|workable\.com|icims\.com|jobvite\.com|bamboohr\.com|recruitee\.com|rippling\.com|breezy\.hr|jazzhr\.com|applytojob\.com|teamtailor\.com|personio\.\w+)$/i;
+const HIRING_HOSTS = /(greenhouse\.io|lever\.co|ashbyhq\.com|myworkdayjobs\.com|myworkdaysite\.com|smartrecruiters\.com|workable\.com|icims\.com|jobvite\.com|bamboohr\.com|recruitee\.com|rippling\.com|breezy\.hr|jazzhr\.com|applytojob\.com|teamtailor\.com|personio\.\w+|oraclecloud\.com|taleo\.net|successfactors\.com|eightfold\.ai)$/i;
+
+// Careers sites whose host isn't the employer's website.
+const CAREER_SITES = {
+  "www.amazon.jobs": "https://www.amazon.com",
+  "amazon.jobs": "https://www.amazon.com",
+  "a127-jobs.nyc.gov": "https://www.nyc.gov",
+  "cityjobs.nyc.gov": "https://www.nyc.gov",
+  "careers.bankofamerica.com": "https://www.bankofamerica.com",
+};
 
 export function companyWebsite(postingUrl) {
   try {
     const u = new URL(postingUrl);
+    if (CAREER_SITES[u.hostname]) return CAREER_SITES[u.hostname];
     if (HIRING_HOSTS.test(u.hostname)) return null;
     const host = u.hostname.replace(/^(www|jobs|careers|boards|apply)\./i, "");
     return `https://${host}`;
