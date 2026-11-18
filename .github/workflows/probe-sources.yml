@@ -35,7 +35,7 @@ jobs:
     steps:
       - name: Candidate sources (status and a count)
         run: |
-          UA="jobdiscovery-probe (+https://github.com/irahysi/jobdiscovery)"
+          UA="jobdiscovery-probe (+https://github.com/ihysi2024/jobdiscovery)"
           p() { # name, url, [extra curl args...]
             local name=$1 url=$2; shift 2
             local out code
