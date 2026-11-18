@@ -26,12 +26,11 @@ export interface JobSummary {
   days: number;            // days since first seen
   why: string;             // "why you might be interested" when ranked; otherwise the job's summary
   summary?: string;        // the job's own one-line summary
+  fit?: number | null;     // 0-100 match for the signed-in person (Best match only)
   possible?: boolean;      // a stretch fit rather than a strong match
 }
 
 export interface InterviewStep { name: string; meta: string }
-export interface Contact { ini: string; name: string; li: string; title: string; email: string; source: string }
-export interface ContactGroup { label: string; people: Contact[] }
 export interface PostingSection { h: string; text?: string; items?: string[] }
 
 export interface JobDetail extends JobSummary {
@@ -47,7 +46,6 @@ export interface JobDetail extends JobSummary {
   timeline: string;          // "4 weeks" or ""
   timelineSource: string;    // "from 14 candidate reports" or "from the posting"
   steps_: InterviewStep[];
-  contactGroups: ContactGroup[];
 }
 
 /** Open-job counts and median posted pay; allRoles / allIndustries rows are totals. */

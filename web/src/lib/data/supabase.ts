@@ -206,7 +206,6 @@ export const supabaseSource: DataSource = {
       timeline: proc?.timeline || "",
       timelineSource: proc ? "from the posting" : "",
       steps_: (proc?.stages ?? []).map((st) => ({ name: st.stage.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()), meta: st.detail })),
-      contactGroups: [],
     };
     return detail;
   },

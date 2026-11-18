@@ -95,7 +95,6 @@ function detail(j: JobSummary): JobDetail {
     steps_: j.process
       ? ["Recruiter screen", "Hiring manager chat", "Technical screen", "Onsite panel", "Offer"].slice(0, Math.max(2, j.steps)).map((name) => ({ name, meta: "" }))
       : [],
-    contactGroups: [],
   };
 }
 

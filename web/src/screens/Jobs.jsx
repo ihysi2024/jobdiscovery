@@ -39,6 +39,55 @@ function toParams(q, defaultSort) {
   return p.toString();
 }
 
+/** "87% match", colored by how strong it is. */
+function FitBadge({ fit }) {
+  const tone = fit >= 75 ? { bg: C.plum, fg: "#FFFFFF", bd: C.plum } : fit >= 50 ? { bg: C.plumSoft, fg: "#5E2A54", bd: "#E3CCDC" } : { bg: "#FFFFFF", fg: C.muted, bd: C.line };
+  return (
+    <span title="How many of the things you told us this job lines up with: your resume, the roles you liked, your directions and your priorities"
+      style={{ display: "inline-flex", alignItems: "center", height: "26px", padding: "0 10px", borderRadius: "13px", background: tone.bg, color: tone.fg,
+        border: `1px solid ${tone.bd}`, fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+      {fit}% match
+    </span>
+  );
+}
+
+/** Page numbers with gaps: 1 … 4 5 6 … 297 */
+function pageList(current, last) {
+  const set = new Set([0, last, current - 1, current, current + 1].filter((n) => n >= 0 && n <= last));
+  if (current <= 2) [1, 2, 3].forEach((n) => n <= last && set.add(n));
+  if (current >= last - 2) [last - 1, last - 2, last - 3].forEach((n) => n >= 0 && set.add(n));
+  const sorted = [...set].sort((a, b) => a - b);
+  const out = [];
+  sorted.forEach((n, i) => { if (i && n - sorted[i - 1] > 1) out.push("gap" + n); out.push(n); });
+  return out;
+}
+
+function Pager({ page, total, size, go, top = false }) {
+  const last = Math.max(0, Math.ceil(total / size) - 1);
+  if (!last) return null;
+  const btn = (label, target, opts = {}) => (
+    <button key={opts.key ?? label} type="button" disabled={opts.disabled} aria-current={opts.current ? "page" : undefined}
+      aria-label={opts.aria} onClick={() => go({ page: target })} style={{
+        minWidth: "36px", height: "36px", padding: "0 10px", borderRadius: "18px", font: "500 14px Inter, sans-serif",
+        border: opts.current ? `1.5px solid ${C.plum}` : `1.5px solid ${C.line}`, background: opts.current ? C.plum : "#FFFFFF",
+        color: opts.current ? "#FFFFFF" : C.ink, opacity: opts.disabled ? 0.4 : 1, fontVariantNumeric: "tabular-nums",
+      }}>{label}</button>
+  );
+  const from = page * size + 1, to = Math.min(total, (page + 1) * size);
+  return (
+    <nav aria-label={top ? "Pages (top)" : "Pages"} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: top ? "14px 0 4px" : "24px 0 0" }}>
+      <span style={{ color: C.muted }}>{from.toLocaleString("en-US")}–{to.toLocaleString("en-US")} of {total.toLocaleString("en-US")}</span>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+        {btn("←", page - 1, { disabled: page === 0, aria: "Previous page", key: "prev" })}
+        {pageList(page, last).map((n) => typeof n === "string"
+          ? <span key={n} aria-hidden="true" style={{ color: C.soft, padding: "0 2px" }}>…</span>
+          : btn(String(n + 1), n, { current: n === page, aria: `Page ${n + 1}`, key: "p" + n }))}
+        {btn("→", page + 1, { disabled: page >= last, aria: "Next page", key: "next" })}
+      </div>
+    </nav>
+  );
+}
+
 function Heart({ on }) {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill={on ? C.plum : "none"} stroke={on ? C.plum : "#4D444B"} strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
@@ -91,8 +140,6 @@ export default function Jobs({ page, query, error, signedIn = false }) {
   const { jobs = [], total = 0, facets = { role: [], ind: [], mode: [], lvl: [] } } = page || {};
   const size = query.pageSize || 20;
   const p = query.page || 0;
-  const from = total ? p * size + 1 : 0;
-  const to = Math.min(total, (p + 1) * size);
   const filtered = !!(query.q || query.process || GROUPS.some(([k]) => (query[k] || []).length));
 
   const search = (
@@ -168,6 +215,7 @@ export default function Jobs({ page, query, error, signedIn = false }) {
           {likeError ? <p role="alert" style={{ margin: "12px 0 0", color: "#8A2A2A" }}>{likeError}</p> : null}
           {error ? <p role="alert" style={{ margin: "24px 0", color: "#8A2A2A" }}>{error}</p> : null}
 
+          <Pager page={p} total={total} size={size} go={go} top />
           <div style={{ opacity: pending ? 0.55 : 1, transition: "opacity 120ms ease" }}>
             {jobs.map((j) => {
               const on = liked.has(j.id);
@@ -179,9 +227,12 @@ export default function Jobs({ page, query, error, signedIn = false }) {
                     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "6px" }}>
                       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "8px 16px" }}>
                         <div className="job-title" style={{ fontSize: "16px", fontWeight: 600 }}>{j.title}</div>
-                        {pay ? <div style={{ fontWeight: 500 }}>{pay}</div> : <div style={{ color: C.soft }}>Pay not listed</div>}
+                        {typeof j.fit === "number" ? <FitBadge fit={j.fit} /> : pay ? <div style={{ fontWeight: 500 }}>{pay}</div> : null}
                       </div>
-                      <div style={{ color: C.muted }}>{j.company} · {j.loc}</div>
+                      <div style={{ color: C.muted }}>
+                        {j.company} · {j.loc}
+                        {typeof j.fit === "number" || !pay ? <> · <span style={{ color: pay ? C.ink : C.soft, fontWeight: pay ? 500 : 400 }}>{pay || "Pay not listed"}</span></> : null}
+                      </div>
                       {query.sort === "match" && j.why ? <div style={{ color: "#5E2A54", fontWeight: 500, fontSize: "13px" }}>{j.why}</div> : null}
                       {(query.sort === "match" ? j.summary : j.why) ? <div style={{ color: "#4D444B", lineHeight: 1.55 }}>{query.sort === "match" ? j.summary : j.why}</div> : null}
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "2px" }}>
@@ -206,15 +257,7 @@ export default function Jobs({ page, query, error, signedIn = false }) {
             </div>
           ) : null}
 
-          {total > size ? (
-            <nav aria-label="Pages" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", paddingTop: "24px" }}>
-              <span style={{ color: C.muted }}>Showing {from.toLocaleString("en-US")}–{to.toLocaleString("en-US")} of {total.toLocaleString("en-US")}</span>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button type="button" disabled={p === 0} onClick={() => go({ page: p - 1 })} style={{ height: "40px", padding: "0 16px", borderRadius: "20px", border: `1.5px solid ${C.line}`, background: "#FFFFFF", font: "500 14px Inter, sans-serif", color: C.ink, opacity: p === 0 ? 0.4 : 1 }}>← Previous</button>
-                <button type="button" disabled={to >= total} onClick={() => go({ page: p + 1 })} style={{ height: "40px", padding: "0 16px", borderRadius: "20px", border: `1.5px solid ${C.line}`, background: "#FFFFFF", font: "500 14px Inter, sans-serif", color: C.ink, opacity: to >= total ? 0.4 : 1 }}>Next →</button>
-              </div>
-            </nav>
-          ) : null}
+          <Pager page={p} total={total} size={size} go={go} />
         </main>
       </div>
     </div>

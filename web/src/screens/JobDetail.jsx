@@ -41,9 +41,6 @@ export default class JobDetail extends React.Component {
       hasTimeline: !!job.timeline,
       timelineNote: job.timelineSource ? ' from application to offer · ' + job.timelineSource : ' from application to offer',
       steps: job.steps_.map((x, i, arr) => Object.assign({}, x, { final: i === arr.length - 1, mid: i < arr.length - 1 })),
-      hasContacts: job.contactGroups.length > 0,
-      groups: job.contactGroups,
-      peopleCount: job.contactGroups.reduce((n, g) => n + g.people.length, 0),
     };
   }
 
@@ -105,7 +102,7 @@ export default class JobDetail extends React.Component {
 </section>
 {" "}
 <div style={{ display: "flex", flexWrap: "wrap", gap: "48px", alignItems: "flex-start" }}>
-<main style={{ flex: "999 1 560px", minWidth: "0", display: "flex", flexDirection: "column", gap: "40px" }}>
+<main style={{ flex: "999 1 560px", minWidth: "0", maxWidth: "820px", display: "flex", flexDirection: "column", gap: "40px" }}>
 {(vm.hasWhy) ? (<section style={{ background: "#FBF5FA", borderRadius: "16px", padding: "28px 32px", display: "flex", flexDirection: "column", gap: "12px" }}>
 <h2 style={{ margin: "0", fontFamily: "'Instrument Serif', serif", fontWeight: "400", fontSize: "30px", lineHeight: "1.1", color: "#4A2141" }}>
 {"Why you might be interested"}
@@ -208,80 +205,6 @@ export default class JobDetail extends React.Component {
 </ol>
 </section></>) : null}
 </main>
-{" "}
-<aside style={{ flex: "1 1 340px", maxWidth: "400px", display: "flex", flexDirection: "column", gap: "24px" }} aria-label="Network for this role">
-{(vm.hasContacts) ? (<><section style={{ border: "1px solid #EFE9D8", borderRadius: "16px", padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
-<div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-<h2 style={{ margin: "0", fontSize: "18px", fontWeight: "600" }}>
-{"Your network for this role"}
-</h2>
-{" "}
-<p style={{ margin: "0", color: "#665D63", lineHeight: "1.5" }}>
-{"People who can tell you what the job is really like, or put your name forward."}
-</p>
-</div>
-{" "}
-{(vm.groups || []).map((g, g$i3) => (<React.Fragment key={g$i3}>
-<div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-<div style={{ fontSize: "12px", fontWeight: "600", letterSpacing: "0.06em", textTransform: "uppercase", color: "#665D63" }}>
-{g.label}
-</div>
-{" "}
-{(g.people || []).map((p, p$i4) => (<React.Fragment key={p$i4}>
-<div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
-<div style={{ width: "40px", height: "40px", flex: "none", borderRadius: "20px", background: "#F3E6EF", color: "#5E2A54", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "600", fontSize: "13px" }}>
-{p.ini}
-</div>
-{" "}
-<div style={{ flex: "1", minWidth: "0", display: "flex", flexDirection: "column", gap: "3px" }}>
-<div style={{ fontWeight: "600" }}>
-{p.name}
-</div>
-{" "}
-<div style={{ color: "#665D63", fontSize: "13px" }}>
-{p.title}
-</div>
-{" "}
-<div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
-<a href={`mailto:${p.email}`} style={{ fontSize: "13px", fontWeight: "500", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-{p.email}
-</a>
-{" "}
-<button type="button" aria-label={`Copy email for ${p.name}`} style={{ width: "28px", height: "28px", flex: "none", border: "none", background: "transparent", borderRadius: "6px", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#665D63" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-<rect x="9" y="9" width="12" height="12" rx="2" />
-<path d="M5 15V5a2 2 0 0 1 2-2h10" />
-</svg>
-</button>
-</div>
-{" "}
-<div style={{ fontSize: "12px", color: "#665D63" }}>
-{p.source}
-</div>
-</div>
-{" "}
-<a href={p.li} target="_blank" rel="noopener noreferrer" aria-label={`LinkedIn profile of ${p.name} (opens in new tab)`} style={{ fontSize: "12px", fontWeight: "600", color: "#665D63", textDecoration: "none", border: "1px solid #E6DED0", borderRadius: "6px", padding: "4px 7px" }}>
-{"in"}
-</a>
-</div>
-</React.Fragment>))}
-</div>
-</React.Fragment>))}
-{" "}
-{(vm.peopleCount > 4) ? (<a href="#" style={{ fontWeight: "500" }}>
-{`See all ${vm.peopleCount} people`}
-</a>) : null}
-</section></>) : (<section style={{ border: "1px solid #EFE9D8", borderRadius: "16px", padding: "24px", display: "flex", flexDirection: "column", gap: "8px" }}>
-<h2 style={{ margin: "0", fontSize: "18px", fontWeight: "600" }}>
-{"Your network for this role"}
-</h2>
-<p style={{ margin: "0", color: "#665D63", lineHeight: "1.5" }}>
-{"We haven't found people for this role yet."}
-</p>
-</section>)}
-{" "}
-
-</aside>
 </div>
 </div>
 </div>

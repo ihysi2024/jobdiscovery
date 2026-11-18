@@ -35,7 +35,7 @@ export async function matchJobs(q: JobQuery): Promise<JobPage | null> {
     p_offset: page * size,
   });
   if (error) throw new Error("Couldn't rank jobs: " + error.message);
-  const ranked = (data ?? []) as { id: number; score: number; reasons: string[]; total: number }[];
+  const ranked = (data ?? []) as { id: number; score: number; fit: number | null; reasons: string[]; total: number }[];
   // Reuse the regular search for job details and filter counts, then keep the ranked order.
   const ids = ranked.map((r) => String(r.id));
   const details = ids.length ? await searchJobs({ ids, pageSize: ids.length }) : await searchJobs({ pageSize: 1 });
@@ -43,7 +43,7 @@ export async function matchJobs(q: JobQuery): Promise<JobPage | null> {
   const jobs = ranked
     .map((r) => {
       const j = byId.get(String(r.id));
-      return j ? { ...j, why: whyLine(r.reasons) || j.why, summary: j.why } : null;
+      return j ? { ...j, why: whyLine(r.reasons) || j.why, summary: j.why, fit: r.fit == null ? null : Math.round(r.fit * 100) } : null;
     })
     .filter((j): j is NonNullable<typeof j> => j !== null);
   return { jobs, total: ranked.length ? Number(ranked[0].total) : 0, facets: details.facets };
