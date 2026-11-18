@@ -30,3 +30,14 @@ test("skills match words, not pieces of words", () => {
   assert.deepEqual(sharedSkills(["SQL", "R"], { title: "Sales rep", summary: "Uses NoSQL databases", skills: [] }), []);
   assert.deepEqual(sharedSkills(["SQL"], { title: "Analyst", summary: "Write SQL daily", skills: [] }), ["SQL"]);
 });
+
+test("company links: website only when the posting is on their own site", async () => {
+  const { companyLinks, companyWebsite } = await import("../src/lib/company-links.mjs");
+  assert.equal(companyWebsite("https://oscarhealth.com/careers/jobs?gh_jid=1"), "https://oscarhealth.com");
+  assert.equal(companyWebsite("https://careers.acme.com/job/1"), "https://acme.com");
+  assert.equal(companyWebsite("https://job-boards.greenhouse.io/acme/jobs/1"), null);
+  assert.equal(companyWebsite("https://acme.wd1.myworkdayjobs.com/x"), null);
+  const links = companyLinks({ company: "Oscar Health", url: "https://boards.greenhouse.io/oscar/jobs/1", jobsHref: "/jobs?q=Oscar" });
+  assert.deepEqual(links.map((l) => l.label), ["Original posting", "LinkedIn", "Glassdoor", "Levels.fyi", "Recent news", "More roles at Oscar Health"]);
+  assert.match(links[1].href, /keywords=Oscar%20Health$/);
+});

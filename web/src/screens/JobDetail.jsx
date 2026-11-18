@@ -3,6 +3,14 @@
 import React from "react";
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
+import { companyLinks } from "@/lib/company-links.mjs";
+
+const ICON = { web: "W", post: "↗", in: "in", gd: "G", lv: "L", news: "N", jobs: "a" };
+const TINT = { web: ["#EEF3F8", "#2F4A66"], post: ["#F3E6EF", "#5E2A54"], in: ["#E8F0FA", "#0A66C2"], gd: ["#E9F6EE", "#0CAA41"], lv: ["#EFEFF6", "#3B3F8C"], news: ["#FFF4E0", "#8A5A00"], jobs: ["#F3E6EF", "#7A3E6E"] };
+function LinkIcon({ kind }) {
+  const [bg, fg] = TINT[kind] || ["#F7F2E4", "#4D444B"];
+  return <span aria-hidden="true" style={{ width: "32px", height: "32px", flex: "none", borderRadius: "8px", background: bg, color: fg, display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: kind === "in" ? "13px" : "14px", fontFamily: kind === "jobs" ? "'Instrument Serif', serif" : "inherit" }}>{ICON[kind] || "•"}</span>;
+}
 import { likeJob, trackedPostingIds, unlikeJob } from "@/lib/tracker";
 
 export default class JobDetail extends React.Component {
@@ -40,6 +48,7 @@ export default class JobDetail extends React.Component {
       hasSteps: job.steps_.length > 0,
       hasTimeline: !!job.timeline,
       timelineNote: job.timelineSource ? ' from application to offer · ' + job.timelineSource : ' from application to offer',
+      links: companyLinks({ company: job.company, url: job.url, jobsHref: '/jobs?sort=new&q=' + encodeURIComponent(job.company) }),
       steps: job.steps_.map((x, i, arr) => Object.assign({}, x, { final: i === arr.length - 1, mid: i < arr.length - 1 })),
     };
   }
@@ -208,6 +217,23 @@ export default class JobDetail extends React.Component {
 </ol>
 </section></>) : null}
 </main>
+<aside aria-label={"About " + vm.job.company} style={{ flex: "1 1 280px", maxWidth: "340px", display: "flex", flexDirection: "column", gap: "12px", position: "sticky", top: "24px", alignSelf: "flex-start" }}>
+<h2 style={{ margin: "0 0 4px", fontSize: "13px", fontWeight: "600", letterSpacing: "0.08em", textTransform: "uppercase", color: "#665D63" }}>
+{"About " + vm.job.company}
+</h2>
+<ul style={{ margin: "0", padding: "0", listStyle: "none", border: "1px solid #EFE9D8", borderRadius: "16px", background: "#FFFFFF", overflow: "hidden" }}>
+{vm.links.map((l, i) => (<li key={l.label} style={{ borderTop: i ? "1px solid #F3EFE2" : "none" }}>
+{l.internal ? (<Link href={l.href} className="row-hover" style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px 16px", color: "#2A2028", textDecoration: "none" }}>
+<LinkIcon kind={l.kind} /><span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontWeight: 500 }}>{l.label}</span><span style={{ display: "block", fontSize: "13px", color: "#665D63" }}>{l.sub}</span></span><span aria-hidden="true" style={{ color: "#B9AFB6" }}>{"→"}</span>
+</Link>) : (<a href={l.href} target="_blank" rel="noopener noreferrer" className="row-hover" style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px 16px", color: "#2A2028", textDecoration: "none" }}>
+<LinkIcon kind={l.kind} /><span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontWeight: 500 }}>{l.label}</span><span style={{ display: "block", fontSize: "13px", color: "#665D63", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.sub}</span></span><span aria-hidden="true" style={{ color: "#B9AFB6" }}>{"↗"}</span>
+</a>)}
+</li>))}
+</ul>
+<p style={{ margin: "0", fontSize: "12px", color: "#7A7078", lineHeight: "1.5" }}>
+{"LinkedIn, Glassdoor, Levels.fyi and news open a search for the company, so check you've landed on the right one."}
+</p>
+</aside>
 </div>
 </div>
 </div>
