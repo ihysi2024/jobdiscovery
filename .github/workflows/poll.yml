@@ -1,6 +1,7 @@
 name: Daily poll
 
-# Polls every board that's due, classifies new or changed jobs, then runs the health check.
+# Polls every board that's due, then runs the health check. When it finishes,
+# "Classify jobs" (classify.yml) starts and labels the new or changed jobs.
 # A failed run (or failed check) makes this workflow fail, and GitHub emails you.
 
 on:
@@ -28,8 +29,6 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       JOBDISCOVERY_CONTACT: ${{ vars.JOBDISCOVERY_CONTACT }}
       ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      FASTEMBED_CACHE_PATH: /home/runner/.cache/fastembed
     steps:
       - uses: actions/checkout@v5
 
@@ -39,7 +38,7 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install ".[postgres,process]"
+        run: pip install ".[postgres]"
 
       - name: Check configuration
         run: |
@@ -49,27 +48,14 @@ jobs:
           fi
 
       - name: Poll due boards
-        # Time budgets (poll 3h + process 1h40m) keep the job inside GitHub's
-        # 6-hour limit; anything unfinished stays queued for tomorrow.
+        # A 4-hour budget keeps the job inside GitHub's 6-hour limit;
+        # boards not reached stay due for tomorrow.
         env:
           LIMIT: ${{ inputs.limit }}
         run: |
-          ARGS="--max-minutes 180"
+          ARGS="--max-minutes 240"
           if [[ "$LIMIT" =~ ^[0-9]+$ ]]; then ARGS="$ARGS --limit $LIMIT"; fi
           jobdiscovery poll $ARGS
-
-      - name: Cache embedding model
-        if: env.ANTHROPIC_API_KEY != ''
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/.cache/fastembed
-          key: fastembed-bge-small-en-v1.5
-
-      - name: Classify new and changed jobs
-        # Skipped until an ANTHROPIC_API_KEY secret is added. Only jobs whose
-        # content changed since they were last classified cost anything.
-        if: env.ANTHROPIC_API_KEY != ''
-        run: jobdiscovery process --max-minutes 100 --max-cost 15
 
       - name: Health check
         run: jobdiscovery check

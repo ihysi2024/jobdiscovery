@@ -66,16 +66,18 @@ def test_lock_on_postgres():
 
 
 def test_process_on_postgres_with_pgvector(capsys, monkeypatch):
-    from types import SimpleNamespace
     from jobdiscovery.classify import Classifier
-    from test_classify import FakeEmbedder, FakeMessages
-    monkeypatch.setattr(cli, "CLASSIFIER", Classifier(client=SimpleNamespace(messages=FakeMessages())))
+    from test_classify import FakeEmbedder, FakeLlamaServer
+    server = FakeLlamaServer()
+    monkeypatch.setattr(cli, "CLASSIFIER", Classifier(server.backend()))
     monkeypatch.setattr(cli, "EMBEDDER", FakeEmbedder())
     cli.main(["--db", URL, "discover"])
     cli.main(["--db", URL, "poll"])
     capsys.readouterr()
-    assert cli.main(["--db", URL, "process"]) == 0
-    assert "Processed 55 of 55 jobs, 0 failed" in capsys.readouterr().out
+    for i in range(2):  # sharded, as the GitHub workflow runs it
+        assert cli.main(["--db", URL, "process", "--shard", f"{i}/2"]) == 0
+    out = capsys.readouterr().out
+    assert out.count("Processed") == 2 and len(server.calls) == 55
     s = Store(URL)
     assert s.summary()["needs_processing"] == 0
     if s.has_pgvector:

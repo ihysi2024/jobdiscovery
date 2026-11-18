@@ -17,6 +17,7 @@ import csv
 import json
 import logging
 import os
+import re
 import sys
 import time
 import traceback
@@ -58,6 +59,13 @@ def _ats_arg(value: str | None) -> set[str] | None:
     if unknown:
         raise argparse.ArgumentTypeError(f"unknown ATS: {', '.join(sorted(unknown))}")
     return chosen
+
+
+def _shard_arg(value: str) -> tuple[int, int]:
+    m = re.fullmatch(r"(\d+)/(\d+)", value.strip())
+    if not m or not (0 <= int(m[1]) < int(m[2])):
+        raise argparse.ArgumentTypeError("shard must look like I/N with 0 <= I < N, e.g. 0/4")
+    return int(m[1]), int(m[2])
 
 
 def _deadline(max_minutes: float | None) -> float | None:
@@ -188,20 +196,35 @@ async def cmd_poll(args, store: Store) -> int:
     return await _locked(store, "poll", body)
 
 
+def _make_classifier(args):
+    from .classify import ClaudeBackend, Classifier, LocalBackend
+    if CLASSIFIER is not None:
+        return CLASSIFIER
+    if args.backend == "rules":
+        return Classifier(None)
+    if args.backend == "claude":
+        return Classifier(ClaudeBackend(model=args.model))
+    return Classifier(LocalBackend(args.llm_url, model_label=args.model or "qwen3.5-4b"))
+
+
 async def cmd_process(args, store: Store) -> int:
-    from .classify import Classifier
     from .embed import Embedder, job_text
 
+    command = "process" if args.shard is None else f"process:{args.shard[0]}/{args.shard[1]}"
+
     async def body(run_id):
-        todo = store.postings_to_process(limit=args.limit, max_attempts=args.max_attempts)
+        todo = store.postings_to_process(limit=args.limit, max_attempts=args.max_attempts, shard=args.shard)
         stats = {"queued": len(todo), "processed": 0, "failed": 0, "stopped_early": None,
                  "cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0}
         if not todo:
             print("Nothing to process: every open NYC job is up to date.")
             return stats
-        classifier = CLASSIFIER or Classifier.from_env(args.model)
+        classifier = _make_classifier(args)
+        if classifier.backend is not None:
+            await classifier.backend.check()
         embedder = None if args.no_embed else (EMBEDDER or Embedder())
-        print(f"Processing {len(todo)} jobs with {classifier.model}"
+        stats["method"] = classifier.method
+        print(f"Processing {len(todo)} jobs with {classifier.method}"
               f"{'' if embedder is None else ' + ' + embedder.model_name} ...", file=sys.stderr)
 
         deadline = _deadline(args.max_minutes)
@@ -215,44 +238,49 @@ async def cmd_process(args, store: Store) -> int:
                 except Exception as e:  # one bad job must not stop the run
                     return p, None, f"{type(e).__name__}: {e}"
 
-        for i in range(0, len(todo), args.chunk):
-            if deadline is not None and time.monotonic() >= deadline:
-                stats["stopped_early"] = "time"
-                break
-            if args.max_cost is not None and classifier.usage.cost_usd >= args.max_cost:
-                stats["stopped_early"] = "cost"
-                break
-            chunk = todo[i:i + args.chunk]
-            results = await asyncio.gather(*(classify_one(p) for p in chunk))
-            ok = [(p, f) for p, f, err in results if f is not None]
-            for p, f, err in results:
-                if err:
-                    store.record_feature_error(p["id"], err)
-                    stats["failed"] += 1
-                    log.warning("job %s failed: %s", p["id"], err)
-            vectors = embedder.embed([job_text(p, f) for p, f in ok]) if (embedder and ok) else [None] * len(ok)
-            for (p, f), vec in zip(ok, vectors):
-                store.save_features(p["id"], p["content_hash"], f, model=classifier.model, embedding=vec,
-                                    embedding_model=embedder.model_name if embedder else None)
-                stats["processed"] += 1
-            store.heartbeat(run_id)
-            done = stats["processed"] + stats["failed"]
-            rate = done / max(time.monotonic() - started, 1e-6)
-            print(f"  {done}/{len(todo)} jobs  ({rate:.1f}/s)  ${classifier.usage.cost_usd:.2f} so far",
-                  file=sys.stderr)
+        try:
+            for i in range(0, len(todo), args.chunk):
+                if deadline is not None and time.monotonic() >= deadline:
+                    stats["stopped_early"] = "time"
+                    break
+                if args.max_cost is not None and classifier.usage.cost_usd >= args.max_cost:
+                    stats["stopped_early"] = "cost"
+                    break
+                chunk = todo[i:i + args.chunk]
+                results = await asyncio.gather(*(classify_one(p) for p in chunk))
+                ok = [(p, f) for p, f, err in results if f is not None]
+                for p, f, err in results:
+                    if err:
+                        store.record_feature_error(p["id"], err)
+                        stats["failed"] += 1
+                        log.warning("job %s failed: %s", p["id"], err)
+                vectors = embedder.embed([job_text(p, f) for p, f in ok]) if (embedder and ok) else [None] * len(ok)
+                for (p, f), vec in zip(ok, vectors):
+                    store.save_features(p["id"], p["content_hash"], f, model=classifier.method, embedding=vec,
+                                        embedding_model=embedder.model_name if embedder else None)
+                    stats["processed"] += 1
+                store.heartbeat(run_id)
+                done = stats["processed"] + stats["failed"]
+                elapsed = max(time.monotonic() - started, 1e-6)
+                cost = f"  ${classifier.usage.cost_usd:.2f} so far" if classifier.usage.prices else ""
+                print(f"  {done}/{len(todo)} jobs  ({elapsed / done:.1f}s per job){cost}", file=sys.stderr)
+        finally:
+            if classifier.backend is not None:
+                await classifier.backend.close()
 
         u = classifier.usage
         stats.update(cost_usd=round(u.cost_usd, 4), input_tokens=u.input_tokens, output_tokens=u.output_tokens,
-                     cache_read_tokens=u.cache_read_tokens)
+                     seconds=round(time.monotonic() - started, 1))
         note = {"time": " Stopped at the time limit.", "cost": " Stopped at the cost limit."}.get(stats["stopped_early"] or "", "")
+        cost = f" Cost about ${u.cost_usd:.2f}." if u.prices else ""
         print(f"Processed {stats['processed']} of {len(todo)} jobs, {stats['failed']} failed "
-              f"(retried next run, up to {args.max_attempts} tries). Cost about ${u.cost_usd:.2f}.{note}")
+              f"(retried next run, up to {args.max_attempts} tries).{cost}{note}")
         if stats["failed"] and stats["failed"] > max(5, 0.5 * (stats["processed"] + stats["failed"])):
             raise RuntimeError(f"{stats['failed']} of {stats['processed'] + stats['failed']} jobs failed to process; "
-                               f"check the API key, model name and the logs.")
+                               f"check the model server (or API key) and the logs.")
         return stats
 
-    return await _locked(store, "process", body)
+    return await _locked(store, command, body)
 
 
 def health_problems(store: Store, *, max_age_hours: float, max_error_rate: float, max_drop: float) -> list[str]:
@@ -285,10 +313,10 @@ def health_problems(store: Store, *, max_age_hours: float, max_error_rate: float
     if now_open == 0 and store.summary()["boards_with_nyc_jobs"] > 0:
         problems.append("no open NYC jobs stored even though boards report NYC jobs")
 
-    proc = store.recent_runs("process", limit=1)
-    if proc and proc[0]["status"] != "ok":
-        problems.append(f"last classification run ended with status '{proc[0]['status']}': "
-                        f"{proc[0].get('error') or 'no details'}")
+    for run in store.latest_finished_runs("process"):
+        if run["status"] != "ok":
+            problems.append(f"last classification run ({run['command']}) ended with status '{run['status']}': "
+                            f"{run.get('error') or 'no details'}")
     return problems
 
 
@@ -373,11 +401,15 @@ def build_parser() -> argparse.ArgumentParser:
     pl.add_argument("--all-locations", action="store_true", help="store non-NYC postings too (much bigger database)")
     pl.add_argument("--max-minutes", type=float, help="stop starting new boards after this long; the rest stay due")
 
-    pr = sub.add_parser("process", help="classify and embed new or changed NYC jobs (needs ANTHROPIC_API_KEY)")
+    pr = sub.add_parser("process", help="classify and embed new or changed NYC jobs")
     pr.add_argument("--limit", type=int, help="process at most this many jobs")
-    pr.add_argument("--concurrency", type=int, default=8, help="jobs classified at once (default 8)")
+    pr.add_argument("--backend", choices=["local", "claude", "rules"], default="local",
+                    help="local: model served by llama-server (default); claude: Anthropic API; rules: no model")
+    pr.add_argument("--llm-url", help="llama-server address (default $JOBDISCOVERY_LLM_URL or http://127.0.0.1:8080)")
+    pr.add_argument("--shard", type=_shard_arg, metavar="I/N", help="process only shard I of N (0-based), for parallel workers")
+    pr.add_argument("--concurrency", type=int, default=4, help="jobs classified at once (default 4)")
     pr.add_argument("--chunk", type=int, default=64, help="jobs per save/embedding batch (default 64)")
-    pr.add_argument("--model", help="Claude model (default claude-haiku-5-5, or $JOBDISCOVERY_MODEL)")
+    pr.add_argument("--model", help="model label (local) or Claude model name (default claude-haiku-5-5)")
     pr.add_argument("--max-attempts", type=int, default=3, help="give up on a job after this many failures")
     pr.add_argument("--max-minutes", type=float, help="stop after this long; the rest wait for the next run")
     pr.add_argument("--max-cost", type=float, help="stop once estimated spend reaches this many US dollars")

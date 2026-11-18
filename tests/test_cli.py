@@ -171,4 +171,4 @@ def test_check_flags_failed_classification(tmp_path, capsys):
     r = s.start_run("process"); s.finish_run(r, "failed", error="AuthenticationError: invalid x-api-key")
     s.close()
     assert cli.main(["--db", db, "check"]) == 2
-    assert "last classification run ended with status 'failed'" in capsys.readouterr().err
+    assert "last classification run (process) ended with status 'failed'" in capsys.readouterr().err

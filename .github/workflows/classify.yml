@@ -1,0 +1,152 @@
+name: Classify jobs
+
+# Labels new or changed jobs: rules for salary, seniority, experience, degree,
+# visa, work mode and employment type; Qwen3.5 4B (run on the GitHub runner with
+# llama.cpp, no API key, no cost) for industry, role family, title, skills,
+# interview process and summary; then a search embedding.
+#
+# Starts after every "Daily poll" run, or by hand. The queue is split into
+# shards that run on separate runners at once (free and unlimited for a
+# public repo). Whatever isn't finished in the time budget waits for the next run.
+
+on:
+  workflow_run:
+    workflows: ["Daily poll"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: "Parallel runners (1-8)"
+        required: false
+        default: "4"
+      limit:
+        description: "Jobs per runner (blank = all queued); use e.g. 20 for a quick test"
+        required: false
+        default: ""
+      minutes:
+        description: "Time budget per runner, in minutes"
+        required: false
+        default: "300"
+
+concurrency:
+  group: classify
+  cancel-in-progress: false
+
+env:
+  MODEL_REPO: bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M
+
+jobs:
+  plan:
+    # Runs even if the poll's health check complained; skips only a cancelled poll.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion != 'cancelled'
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.p.outputs.shards }}
+      total: ${{ steps.p.outputs.total }}
+    steps:
+      - id: p
+        env:
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          n=4
+          if [[ "$SHARDS" =~ ^[1-8]$ ]]; then n=$SHARDS; fi
+          echo "total=$n" >> "$GITHUB_OUTPUT"
+          echo "shards=$(python3 -c "import json; print(json.dumps(list(range($n))))")" >> "$GITHUB_OUTPUT"
+
+  classify:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+      LLAMA_CACHE: /home/runner/.cache/llama
+      FASTEMBED_CACHE_PATH: /home/runner/.cache/fastembed
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install ".[postgres,process]"
+
+      - name: Check configuration
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Add a DATABASE_URL repository secret (see README: Deploying)."
+            exit 1
+          fi
+
+      - name: Install llama.cpp (latest prebuilt release)
+        run: |
+          mkdir -p /tmp/llama && cd /tmp/llama
+          gh release download -R ggml-org/llama.cpp --pattern '*bin-ubuntu-x64.zip' --pattern '*bin-ubuntu-x64.tar.gz'
+          for f in *; do case "$f" in *.zip) unzip -q "$f" ;; *.tar.gz) tar xzf "$f" ;; esac; done
+          bin=$(dirname "$(find /tmp/llama -type f -name llama-server | head -1)")
+          echo "$bin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$bin:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Cache models
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/.cache/llama
+            /home/runner/.cache/fastembed
+          key: models-qwen3.5-4b-q4km-bge-small-v1
+
+      - name: Start model server
+        run: |
+          nohup llama-server -hf "$MODEL_REPO" --no-mmproj --jinja \
+            -c 8192 -np 2 -t 4 --host 127.0.0.1 --port 8080 > /tmp/llama-server.log 2>&1 &
+          # First run downloads the model (about 3 GB).
+          for i in $(seq 1 180); do
+            if curl -sf http://127.0.0.1:8080/health > /dev/null; then echo "ready after ${i}x5s"; exit 0; fi
+            sleep 5
+          done
+          echo "::error::model server didn't start"; tail -50 /tmp/llama-server.log; exit 1
+
+      - name: Classify
+        env:
+          SHARD: ${{ matrix.shard }}
+          TOTAL: ${{ needs.plan.outputs.total }}
+          LIMIT: ${{ inputs.limit }}
+          MINUTES: ${{ inputs.minutes }}
+        run: |
+          ARGS="--backend local --concurrency 2 --chunk 16"
+          [[ "$TOTAL" -gt 1 ]] && ARGS="$ARGS --shard $SHARD/$TOTAL"
+          [[ "$LIMIT" =~ ^[0-9]+$ ]] && ARGS="$ARGS --limit $LIMIT"
+          if [[ "$MINUTES" =~ ^[0-9]+$ ]]; then ARGS="$ARGS --max-minutes $MINUTES"; else ARGS="$ARGS --max-minutes 300"; fi
+          jobdiscovery process $ARGS
+
+      - name: Model server log
+        if: failure()
+        run: tail -100 /tmp/llama-server.log
+
+  report:
+    needs: classify
+    if: always() && needs.classify.result != 'skipped'
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install ".[postgres]"
+      - name: Summary
+        run: |
+          {
+            echo '```'
+            jobdiscovery report || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

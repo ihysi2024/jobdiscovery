@@ -193,6 +193,14 @@ class Store:
         self.db.execute("UPDATE runs SET finished_at=?, status=?, stats=?, error=? WHERE id=?",
                         (iso(when or now_utc()), status, json.dumps(stats or {}), (error or "")[:2000] or None, run_id))
 
+    def latest_finished_runs(self, prefix: str) -> list[dict]:
+        """The most recent finished run of every command named ``prefix`` or ``prefix:<anything>``."""
+        rows = self.db.all(
+            "SELECT * FROM runs r WHERE (command=? OR command LIKE ?) AND finished_at IS NOT NULL "
+            "AND id = (SELECT MAX(id) FROM runs r2 WHERE r2.command = r.command AND r2.finished_at IS NOT NULL)",
+            (prefix, prefix + ":%"))
+        return [dict(r) for r in rows]
+
     def recent_runs(self, command: str, limit: int = 10) -> list[dict]:
         rows = self.db.all("SELECT * FROM runs WHERE command=? AND finished_at IS NOT NULL "
                            "ORDER BY id DESC LIMIT ?", (command, limit))
@@ -325,16 +333,23 @@ class Store:
 
     # ---------------------------------------------------------------- processing
 
-    def postings_to_process(self, *, limit: int | None = None, max_attempts: int = 3) -> list[dict]:
-        """Open postings whose content hasn't been classified yet (new, changed, or failed < max_attempts)."""
+    def postings_to_process(self, *, limit: int | None = None, max_attempts: int = 3,
+                            shard: tuple[int, int] | None = None) -> list[dict]:
+        """Open postings whose content hasn't been classified yet (new, changed, or failed < max_attempts).
+
+        ``shard=(i, n)`` returns only postings with ``id % n == i``, so n workers can split the queue."""
         sql = ("SELECT p.id, p.board_key, p.title, p.locations, p.department, p.workplace_type, p.is_remote, "
                "p.salary_min, p.salary_max, p.salary_currency, p.salary_interval, p.description_text, "
                "p.content_hash, b.ats, b.token "
                "FROM postings p JOIN boards b ON b.key = p.board_key "
                "LEFT JOIN job_features f ON f.posting_id = p.id "
                "WHERE p.closed_at IS NULL AND (p.processed_hash IS NULL OR p.processed_hash != p.content_hash) "
-               "AND COALESCE(f.attempts, 0) < ? ORDER BY p.first_seen_at DESC, p.id")
+               "AND COALESCE(f.attempts, 0) < ?")
         args: list = [max_attempts]
+        if shard is not None:
+            sql += " AND p.id % ? = ?"
+            args += [shard[1], shard[0]]
+        sql += " ORDER BY p.first_seen_at DESC, p.id"
         if limit:
             sql += " LIMIT ?"
             args.append(limit)

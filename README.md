@@ -24,8 +24,9 @@ boards of five hiring systems, keeps those jobs fresh, and classifies each one
    * New or changed: `content_hash != processed_hash`, so later steps
      (classification, embeddings) know to process it.
    * Missing from a successful poll: marked `closed_at`. Failed polls never close anything.
-3. **process** classifies new or changed jobs with Claude and embeds them for
-   matching (see below). Unchanged jobs are never sent again.
+3. **process** classifies new or changed jobs (rules plus a small open model
+   that runs for free) and embeds them for matching (see below). Unchanged
+   jobs are never processed again.
 4. **report** prints the numbers and can export CSVs.
 
 Scheduling is built in: boards with NYC jobs are due daily, boards without
@@ -75,50 +76,70 @@ jobdiscovery add --file links.txt --source user
 
 ## Classifying jobs (`process`)
 
-Each open NYC job gets one call to Claude Haiku 5.5 with a fixed JSON schema
-(structured outputs), producing:
+Two parts, so it needs no paid API:
+
+**Rules** (`jobdiscovery/rules.py`) read the fields postings state in
+predictable ways:
+
+| Field | How |
+|---|---|
+| `salary_min_annual`, `salary_max_annual`, `salary_source` | The hiring system's own pay fields first; otherwise the pay range in the text (NYC postings must include one), skipping bonus, equity and commission figures. Hourly, weekly and monthly pay is annualized. Never guessed. |
+| `seniority` | Title words (Intern, Junior, Senior, Staff, Director, VP ...), else years of experience |
+| `years_experience_min`, `degree_required`, `visa_sponsorship` | Stated requirements only (`visa_sponsorship` is yes, no or unknown) |
+| `work_mode`, `employment_type` | Hiring-system fields first, then the text |
+
+**A small open model**, Qwen3.5 4B (4-bit, about 3 GB), served by
+[llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server`, fills in
+what needs judgment. Its output is constrained to a JSON schema, so values
+always come from the fixed lists in `jobdiscovery/taxonomy.py`:
 
 | Field | Values |
 |---|---|
-| `role_family`, `industry` | Fixed lists in `jobdiscovery/taxonomy.py`, covering every field, not just tech |
-| `seniority` | intern, entry, mid, senior, staff_principal, manager, director, executive |
+| `role_family`, `industry` | Fixed lists covering every field, not just tech |
 | `role_title`, `company_name`, `summary` | Cleaned title, employer, one-sentence description |
-| `salary_min_annual`, `salary_max_annual`, `salary_source` | Annualized base pay. The hiring system's own salary fields win; otherwise it's read from the text (NYC postings must include a range). Never guessed. |
-| `years_experience_min`, `degree_required`, `visa_sponsorship`, `skills` | Only what the posting states |
+| `skills` | Up to 8 skills, tools or licenses the posting asks for |
 | `interview_process` | Stages and timeline, only when the posting describes them |
-| `work_mode` | onsite, hybrid or remote (hiring-system field wins) |
 
-Then a small open embedding model (`BAAI/bge-small-en-v1.5`, 384 dimensions,
-via fastembed) turns each job into a vector for matching. It runs on the
-GitHub runner, so there's no embedding API or cost. On Postgres with pgvector
-(Supabase has it) the vectors are stored in a `vector(384)` column; elsewhere as JSON.
+Then `BAAI/bge-small-en-v1.5` (384 dimensions, via fastembed) turns each job
+into a vector for matching. On Postgres with pgvector (Supabase has it) the
+vectors go in a `vector(384)` column; elsewhere they're stored as JSON.
 
-Results live in the `job_features` table, keyed by posting. A job is only sent
-to Claude again if its content fingerprint changes. Failures are retried on
-the next run, up to 3 times.
+Results live in the `job_features` table, keyed by posting; `model` records
+how each row was made (`rules+qwen3.5-4b`). A job is processed again only if
+its content fingerprint changes. Failures are retried on the next run, up to 3 times.
 
-**Cost:** about $0.0004 per job at Haiku 5.5 prices ($0.10 / $0.50 per million
-input/output tokens), so roughly $2–3 for the first ~6,000 jobs and cents per
-day after that. `--max-cost` caps a single run (the workflow uses $15).
+**Where it runs:**
+
+* **Daily, on GitHub** (`classify.yml`): starts after each daily poll, splits
+  the queue across 4 runners and runs the model on each. Free for a public repo.
+* **On a Mac**, for the first big batch: `./scripts/classify_local.sh`
+  installs llama.cpp, starts the model, classifies everything queued, and
+  stops the model. It asks for `DATABASE_URL` without showing it. Stop it
+  any time; rerunning picks up where it left off.
+
+Other backends: `--backend rules` (no model at all; fills only the rule
+fields) and `--backend claude` (Claude Haiku via the API; needs
+`pip install -e ".[claude]"` and `ANTHROPIC_API_KEY`, about $0.0004 per job).
 
 ```bash
 pip install -e ".[process]"
-export ANTHROPIC_API_KEY=...
+llama-server -hf bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M --no-mmproj --jinja -c 16384 -np 4 &
 jobdiscovery process --limit 20      # try a few first
-jobdiscovery process                 # everything that needs it
+jobdiscovery process --shard 0/2     # half the queue (run 1/2 elsewhere at the same time)
 ```
 
 ## Deploying: runs every day on GitHub Actions
 
-Three workflows are included in `.github/workflows/`:
+Four workflows are included in `.github/workflows/`:
 
 | Workflow | When | What |
 |---|---|---|
-| `poll.yml` | Daily, 09:47 UTC | `poll` every due board, `process` new/changed jobs (if `ANTHROPIC_API_KEY` is set), then `check`. Fails (and GitHub emails you) if anything looks wrong. |
+| `poll.yml` | Daily, 09:47 UTC | `poll` every due board, then `check`. Fails (and GitHub emails you) if anything looks wrong. |
+| `classify.yml` | After each daily poll | `process` new/changed jobs with Qwen3.5 4B on 4 runners at once. |
 | `discover.yml` | Sundays, 13:23 UTC | Searches the latest Common Crawl indexes for new boards. |
 | `tests.yml` | Every push | Runs the tests on SQLite and on a real Postgres. |
 
-All three can also be started by hand from the **Actions** tab ("Run workflow").
+All of them can also be started by hand from the **Actions** tab ("Run workflow").
 
 ### One-time setup
 
@@ -136,8 +157,6 @@ All three can also be started by hand from the **Actions** tab ("Run workflow").
 2. **Add it to the repo.** Settings → Secrets and variables → Actions:
    * Secret `DATABASE_URL`: the connection string.
    * Variable `JOBDISCOVERY_CONTACT`: an email address site owners can reach you at.
-   * Secret `ANTHROPIC_API_KEY`: a Claude API key from console.anthropic.com, to classify jobs.
-     Without it, polling still runs and classification is skipped.
    * Optional secret `ALERT_WEBHOOK_URL`: a Slack or Discord incoming webhook for alerts.
 3. **Seed it.** Actions → Weekly discovery → Run workflow, with `max_pages`
    set to `2` for a quick first test. Then Actions → Daily poll → Run workflow.
@@ -151,7 +170,7 @@ After that, nothing needs to be run by hand. Tables are created automatically on
 * **No overlaps.** Each run takes a lock in the database (`runs` table), and the
   workflows also use GitHub's `concurrency` groups. A run whose heartbeat stops
   for 30 minutes is treated as dead and its lock is released.
-* **Time budget.** `--max-minutes 300` stops starting new work before GitHub's
+* **Time budget.** `--max-minutes` stops starting new work before GitHub's
   6-hour limit. Unfinished boards stay due; discovery saves every index page as it goes.
 * **Health check** (`jobdiscovery check`) fails the run and alerts when:
   * the last poll is older than 36 hours or didn't finish;
