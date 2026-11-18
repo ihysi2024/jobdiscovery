@@ -1,0 +1,28 @@
+name: Look up public jobs
+
+# Read-only lookups against the public job views (the same ones the web app
+# reads), for checking data. Uses the publishable key passed in; never the
+# database password.
+
+on:
+  workflow_dispatch:
+    inputs:
+      key:
+        description: "Supabase publishable key (sb_publishable_...)"
+        required: true
+      path:
+        description: "PostgREST path on job_listings or jobs_search, e.g. job_listings?select=id,title&company_name=ilike.*oscar*"
+        required: true
+
+jobs:
+  query:
+    runs-on: ubuntu-latest
+    env:
+      URL: https://esajgoakrjmtnpwssclk.supabase.co
+      KEY: ${{ inputs.key }}
+      QPATH: ${{ inputs.path }}
+    steps:
+      - run: |
+          [[ "$KEY" =~ ^sb_publishable_[A-Za-z0-9_-]+$ ]] || { echo "::error::not a publishable key"; exit 1; }
+          [[ "$QPATH" =~ ^(job_listings|jobs_search|market_stats)\? ]] || { echo "::error::only the public job views"; exit 1; }
+          curl -s -H "apikey: $KEY" -H "Authorization: Bearer $KEY" "$URL/rest/v1/$QPATH" | python3 -m json.tool | head -400
