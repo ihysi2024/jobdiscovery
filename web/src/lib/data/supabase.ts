@@ -67,6 +67,8 @@ export async function searchJobs(q: JobQuery): Promise<JobPage> {
     .select("id, board_key, company_name, title, first_seen_at, industry, role_family, seniority, mode, " +
             "salary_min_annual, salary_max_annual, has_process, interview_process, summary", { count: "exact" });
   if (q.ids?.length) query = query.in("id", q.ids.map(Number));
+  const skip = (q.excludeIds ?? []).filter((x) => /^\d+$/.test(x)).slice(0, 500);
+  if (skip.length) query = query.not("id", "in", `(${skip.join(",")})`);
   if (q.role?.length) query = query.in("role_family", q.role);
   if (q.ind?.length) query = query.in("industry", q.ind);
   if (q.mode?.length) query = query.in("mode", q.mode);

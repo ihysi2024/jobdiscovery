@@ -2,6 +2,7 @@
 /* Ported from the mockup (Onboarding-Swipe.dc.html). Layout and behavior match the design. */
 import React from "react";
 import { saveFeedback } from "@/lib/answers";
+import { likeJob } from "@/lib/tracker";
 
 function doneText(liked, total) {
   if (!total) return "We couldn't find jobs to show you right now. You can skip this step; we'll learn from what you like later.";
@@ -20,6 +21,8 @@ export default class OnboardingPicks extends React.Component {
   record(card, liked, reasons, note) {
     // Saved as the person goes, so leaving halfway keeps what they've told us.
     saveFeedback(card.id, liked, reasons, note).catch((e) => this.setState({ saveError: e.message }));
+    // A liked role also goes to My jobs.
+    if (liked) likeJob({ postingId: card.id, title: card.title, company: card.company }).catch(() => {});
   }
   renderVals() {
     const s = this.state;

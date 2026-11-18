@@ -8,12 +8,13 @@ import type { JobPage, JobQuery } from "../types";
 
 const cleanQuery = (q: string) => q.replace(/[,()*%\\:."']/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
 
-/** Turn ranking reasons into the one-line "why you might be interested". */
+/** Turn ranking reasons into the one-line "why you might be interested"; a stretch warning goes last. */
 export function whyLine(reasons: string[]): string {
-  const good = reasons.filter((r) => !r.startsWith("Asks for more"));
-  const stretch = reasons.find((r) => r.startsWith("Asks for more"));
-  const line = good.slice(0, 3).join(" · ");
-  return stretch ? (line ? line + " · " : "") + "A stretch: " + stretch.toLowerCase() : line;
+  const caveat = reasons.find((r) => r.startsWith("A stretch") || r.startsWith("Likely out of reach"));
+  const good = reasons.filter((r) => r !== caveat);
+  // The level reason is useful but less interesting than the others; keep it if there's room.
+  const ordered = [...good.filter((r) => r !== "Right level for your experience"), ...good.filter((r) => r === "Right level for your experience")];
+  return [...ordered.slice(0, caveat ? 2 : 3), ...(caveat ? [caveat] : [])].join(" · ");
 }
 
 export async function matchJobs(q: JobQuery): Promise<JobPage | null> {

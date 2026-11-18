@@ -82,3 +82,18 @@ export async function ownLanes(): Promise<string[]> {
   const { data } = await supabase.from("preferences").select("lanes").eq("user_id", auth.user.id).maybeSingle();
   return (data && data.lanes) || [];
 }
+
+/** Jobs the signed-in person already saved or liked; they're left out of the job list. */
+export async function ownSavedIds(): Promise<string[]> {
+  if (!AUTH_ENABLED) return [];
+  const supabase = await supabaseServer();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return [];
+  const [t, f] = await Promise.all([
+    supabase.from("tracked_jobs").select("posting_id").eq("user_id", auth.user.id).not("posting_id", "is", null),
+    supabase.from("job_feedback").select("posting_id").eq("user_id", auth.user.id).eq("liked", true),
+  ]);
+  const ids = new Set<string>();
+  for (const r of [...((t.data ?? []) as { posting_id: number }[]), ...((f.data ?? []) as { posting_id: number }[])]) ids.add(String(r.posting_id));
+  return [...ids];
+}

@@ -1,7 +1,7 @@
 import Jobs from "@/screens/Jobs";
 import { data } from "@/lib/data";
 import { matchJobs } from "@/lib/data/match";
-import { currentUser } from "@/lib/supabase/server";
+import { currentUser, ownSavedIds } from "@/lib/supabase/server";
 import type { JobPage, JobQuery } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +20,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<Par
     sort,
     page: Math.max(0, (Number(sp.page) || 1) - 1),
     pageSize: 20,
+    // Saved jobs live in My jobs, so the list only shows new ones.
+    excludeIds: signedIn ? await ownSavedIds().catch(() => []) : [],
   };
   let page: JobPage | null = null;
   let error: string | null = null;

@@ -69,6 +69,7 @@ export interface JobQuery {
   pageSize?: number;
   limit?: number;     // legacy: first N newest
   ids?: string[];     // only these jobs (used to load ranked results)
+  excludeIds?: string[]; // leave these out (jobs the person already saved)
 }
 
 export interface Facet { value: string; n: number }

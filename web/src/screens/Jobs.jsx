@@ -105,6 +105,7 @@ export default function Jobs({ page, query, error, signedIn = false }) {
   const [liked, setLiked] = React.useState(new Set());
   const [open, setOpen] = React.useState({});
   const [likeError, setLikeError] = React.useState("");
+  const [justSaved, setJustSaved] = React.useState(new Set()); // collapsed to "Saved to My jobs · Undo"
 
   React.useEffect(() => { setText(query.q || ""); }, [query.q]);
   React.useEffect(() => { trackedPostingIds().then(setLiked).catch(() => {}); }, []);
@@ -128,11 +129,15 @@ export default function Jobs({ page, query, error, signedIn = false }) {
     const next = new Set(liked);
     on ? next.delete(j.id) : next.add(j.id);
     setLiked(next);
+    const saved = new Set(justSaved);
+    on ? saved.delete(j.id) : saved.add(j.id);
+    setJustSaved(saved);
     try {
       if (on) await unlikeJob(j.id); else await likeJob({ postingId: j.id, title: j.title, company: j.company });
       setLikeError("");
     } catch (e) {
       setLiked(liked);
+      setJustSaved(justSaved);
       setLikeError(e.message);
     }
   };
@@ -218,6 +223,14 @@ export default function Jobs({ page, query, error, signedIn = false }) {
           <Pager page={p} total={total} size={size} go={go} top />
           <div style={{ opacity: pending ? 0.55 : 1, transition: "opacity 120ms ease" }}>
             {jobs.map((j) => {
+              if (justSaved.has(j.id)) {
+                return (
+                  <div key={j.id} role="status" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "14px 12px", margin: "0 -8px", borderBottom: `1px solid ${C.line}`, color: C.muted }}>
+                    <span><strong style={{ color: C.ink, fontWeight: 500 }}>{j.title}</strong> saved to <Link href="/my-jobs">My jobs</Link></span>
+                    <button type="button" onClick={() => toggleLike(j)} style={{ height: "32px", padding: "0 14px", borderRadius: "16px", border: `1.5px solid ${C.line}`, background: "#FFFFFF", font: "500 13px Inter, sans-serif", color: C.ink }}>Undo</button>
+                  </div>
+                );
+              }
               const on = liked.has(j.id);
               const pay = payOf(j);
               return (
