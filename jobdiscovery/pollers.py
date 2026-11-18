@@ -433,10 +433,11 @@ _BOFA = "https://careers.bankofamerica.com"
 
 
 async def poll_bofa(client: PoliteClient, board: Board, *, max_jobs: int = 20000) -> list[Posting]:
-    out, start, rows = [], 0, 100
+    out, start, page = [], 0, 100
     while start < max_jobs:
+        # "rows" is the end position, not the page size: start=100&rows=200 is the second page.
         resp = await client.get(f"{_BOFA}/services/jobssearchservlet",
-                                params={"start": start, "rows": rows, "search": "getAllJobs"})
+                                params={"start": start, "rows": start + page, "search": "getAllJobs"})
         _check(resp, board)
         data = resp.json()
         jobs = data.get("jobsList") or []

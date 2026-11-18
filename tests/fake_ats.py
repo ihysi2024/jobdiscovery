@@ -155,7 +155,8 @@ def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=NYC_JOBS)
 
     if host == "careers.bankofamerica.com" and path == "/services/jobssearchservlet":
-        return httpx.Response(200, json=BOFA)
+        start, end = int(q["start"][0]), int(q["rows"][0])
+        return httpx.Response(200, json={**BOFA, "jobsList": BOFA["jobsList"][start:end]})
 
     if host == "bigco.wd1.myworkdayjobs.com" and request.method == "POST":
         body = json.loads(request.content)
