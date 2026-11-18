@@ -153,8 +153,6 @@ jobs:
       - run: pip install ".[postgres]"
       - name: Summary
         run: |
-          {
-            echo '```'
-            jobdiscovery report --samples 8 || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          out=$(jobdiscovery report --samples 8 || true)
+          echo "$out"
+          { echo '```'; echo "$out"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
