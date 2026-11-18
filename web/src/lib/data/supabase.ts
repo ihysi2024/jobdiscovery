@@ -2,6 +2,7 @@
 // `job_listings` view: open New York City jobs with their classification.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Company, DataSource, JobDetail, JobSummary, PostingSection, WorkMode } from "../types";
+import { cardDetails, choosePicks, type Candidate, type PickCard } from "./picks";
 
 let client: SupabaseClient | null = null;
 function db(): SupabaseClient {
@@ -167,6 +168,64 @@ export const supabaseSource: DataSource = {
       companyStats: null,
     };
     return detail;
+  },
+
+  async marketStats() {
+    const { data, error } = await db().from("market_stats").select("*").limit(2000);
+    if (error) throw new Error("Couldn't load market numbers: " + error.message);
+    return ((data ?? []) as { role_family: string | null; industry: string | null; all_roles: boolean; all_industries: boolean;
+      openings: number; with_pay: number; pay_lo: number | null; pay_hi: number | null }[]).map((r) => ({
+      role: r.role_family, industry: r.industry, allRoles: r.all_roles, allIndustries: r.all_industries,
+      openings: r.openings, withPay: r.with_pay, payLo: r.pay_lo, payHi: r.pay_hi,
+    }));
+  },
+
+  async roleFamiliesOf(ids) {
+    const nums = ids.filter((x) => /^\d+$/.test(x)).map(Number);
+    if (!nums.length) return [];
+    const { data, error } = await db().from("job_listings").select("role_family").in("id", nums);
+    if (error) throw new Error("Couldn't load your picks: " + error.message);
+    const counts = new Map<string, number>();
+    for (const r of (data ?? []) as { role_family: string | null }[]) if (r.role_family) counts.set(r.role_family, (counts.get(r.role_family) || 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+  },
+
+  async quickPicks(profile, seed) {
+    const { data, error } = await db()
+      .from("job_listings")
+      .select("id, board_key, company_name, title, workplace_type, first_seen_at, industry, role_family, seniority, work_mode, " +
+              "salary_min_annual, salary_max_annual, interview_process, summary, skills")
+      .not("processed_at", "is", null)
+      .order("first_seen_at", { ascending: false })
+      .limit(1000);
+    if (error) throw new Error("Couldn't load jobs: " + error.message);
+    const rows = (data ?? []) as unknown as Row[];
+    const cands: Candidate[] = rows.map((r) => {
+      const s = toSummary(r);
+      return { id: s.id, mono: s.mono, title: s.title, company: s.company, loc: s.loc, lo: s.lo, hi: s.hi,
+        role: s.roleLabel, ind: s.indLabel, skills: parse<string[]>(r.skills) ?? [], summary: r.summary || "" };
+    });
+    const chosen = choosePicks(cands, profile, seed);
+    if (!chosen.length) return [];
+    const { data: det, error: e2 } = await db()
+      .from("job_listings")
+      .select("id, description_text, years_experience_min, degree_required")
+      .in("id", chosen.map((x) => Number(x.c.id)));
+    if (e2) throw new Error("Couldn't load jobs: " + e2.message);
+    const byId = new Map(((det ?? []) as unknown as Row[]).map((r) => [String(r.id), r]));
+    return chosen.map(({ c, wild }): PickCard => {
+      const d = byId.get(c.id);
+      const wants = [
+        d?.years_experience_min != null ? `${d.years_experience_min}+ years of experience` : "",
+        ...c.skills.slice(0, 3),
+      ].filter(Boolean);
+      const { does, wants: w } = cardDetails(sections(d?.description_text || ""), { summary: c.summary, wants });
+      return {
+        id: c.id, mono: c.mono, title: c.title, company: c.company, loc: c.loc,
+        pay: c.lo != null ? (c.lo === c.hi ? `$${c.lo}k` : `$${c.lo}–${c.hi}k`) : "Pay not listed",
+        stage: c.ind, lane: c.role, wild, about: c.summary, does, wants: w,
+      };
+    });
   },
 
   async getCompany(id) {

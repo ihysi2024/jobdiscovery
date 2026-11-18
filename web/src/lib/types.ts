@@ -59,6 +59,12 @@ export interface Company {
   stats: null | Record<string, unknown>;
 }
 
+/** Open-job counts and median posted pay; allRoles / allIndustries rows are totals. */
+export interface MarketRow {
+  role: string | null; industry: string | null; allRoles: boolean; allIndustries: boolean;
+  openings: number; withPay: number; payLo: number | null; payHi: number | null;
+}
+
 export interface JobQuery {
   limit?: number;
 }
@@ -70,4 +76,9 @@ export interface DataSource {
   countJobs(): Promise<number>;
   getJob(id: string): Promise<JobDetail | null>;
   getCompany(id: string): Promise<Company | null>;
+  marketStats(): Promise<MarketRow[]>;
+  /** Role families of these jobs, most common first (for the person's liked picks). */
+  roleFamiliesOf(ids: string[]): Promise<string[]>;
+  /** Jobs for onboarding's quick picks, chosen against the person's profile. */
+  quickPicks(profile: import("./data/picks").ProfileForPicks | null, seed: string): Promise<import("./data/picks").PickCard[]>;
 }

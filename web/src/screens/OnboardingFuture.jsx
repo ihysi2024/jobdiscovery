@@ -1,29 +1,76 @@
 "use client";
 /* Ported from the mockup (Onboarding-Future.dc.html). Layout and behavior match the design. */
 import React from "react";
+import { useRouter } from "next/navigation";
+import { loadPreferences, savePreferences } from "@/lib/answers";
+
+// Where people see themselves, in words that fit any field.
+const HORIZONS = [
+  ['y1', '1 year', ['Doing good work in my field', 'Settled into a new field', 'Studying or training', 'Still exploring']],
+  ['y3', '3 years', ['Leading projects or people', 'The go-to expert on something', 'Working in a different industry', 'Still exploring']],
+  ['y5', '5 years', ['Managing a team', 'A senior expert in my field', 'Running my own thing', 'Still exploring']],
+  ['y10', '10 years', ['In a leadership role', 'Known in my field', 'Owning a business', 'Working less']]
+];
 import Link from "next/link";
 
-export default class OnboardingFuture extends React.Component {
+class OnboardingFuture extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { dreams: ['build', 'research'], h: { y1: 0, y3: 1, y5: 2, y10: 3 }, skip: { d: false, h: false } };
+    this.state = { dreams: [], dreamOwn: '', h: {}, own: {}, ownOpen: {}, skip: { d: false, h: false }, saving: false, saveError: '' };
+  }
+  async componentDidMount() {
+    try {
+      const { row } = await loadPreferences();
+      const f = row && row.future;
+      if (!f) return;
+      const h = {}, own = {}, ownOpen = {};
+      HORIZONS.forEach(([id, , opts]) => {
+        const v = (f.horizons || {})[id];
+        if (!v) return;
+        const i = opts.indexOf(v);
+        if (i >= 0) h[id] = i; else { own[id] = v; ownOpen[id] = true; }
+      });
+      this.setState({ dreams: f.dreams || [], dreamOwn: f.own || '', h, own, ownOpen });
+    } catch (e) {
+      this.setState({ saveError: e.message });
+    }
+  }
+  async next() {
+    const s = this.state;
+    this.setState({ saving: true, saveError: '' });
+    try {
+      const horizons = {};
+      HORIZONS.forEach(([id, , opts]) => {
+        const own = (s.own[id] || '').trim();
+        if (own) horizons[id] = own; else if (s.h[id] !== undefined) horizons[id] = opts[s.h[id]];
+      });
+      const future = {
+        dreams: s.skip.d ? null : s.dreams, own: s.skip.d ? null : s.dreamOwn.trim() || null,
+        horizons: s.skip.h ? null : horizons
+      };
+      await savePreferences({ future: future.dreams === null && future.horizons === null ? null : future });
+      this.props.router.push('/onboarding/picks');
+    } catch (e) {
+      this.setState({ saving: false, saveError: e.message });
+    }
   }
   renderVals() {
     const s = this.state;
-    const dList = [['build', 'Build things anyway'], ['research', 'Do research'], ['teach', 'Teach or mentor'], ['travel', 'Travel'], ['create', 'Make art or music'], ['outdoors', 'Be outside'], ['care', 'Care for people']];
+    const dList = [['build', 'Build or make things'], ['research', 'Learn or research'], ['teach', 'Teach or mentor'], ['care', 'Care for people'], ['create', 'Make art, music or writing'], ['outdoors', 'Be outside'], ['hands', 'Work with my hands'], ['own', 'Start something of my own'], ['community', 'Help my community'], ['travel', 'Travel'], ['family', 'Spend time with family']];
     const dreams = dList.map(([id, label]) => {
       const on = s.dreams.indexOf(id) >= 0;
       return { label, sel: on, unsel: !on, toggle: () => this.setState({ dreams: on ? s.dreams.filter((x) => x !== id) : s.dreams.concat(id) }) };
     });
-    const hDefs = [
-      ['y1', '1 year', ['Shipping ML in production', 'Settled into a new field', 'Finishing a degree', 'Exploring']],
-      ['y3', '3 years', ['Leading projects', 'Deep specialist', 'Switched industries', 'Exploring']],
-      ['y5', '5 years', ['Managing a team', 'Staff-level IC', 'Running my own thing', 'Exploring']],
-      ['y10', '10 years', ['Executive', 'Recognized expert', 'Founder', 'Off the clock']]
-    ];
+    const hDefs = HORIZONS;
     const horizons = hDefs.map(([id, label, opts]) => ({
       label,
-      opts: opts.map((o, i) => ({ label: o, sel: s.h[id] === i, unsel: s.h[id] !== i, pick: () => this.setState({ h: Object.assign({}, s.h, { [id]: i }) }) }))
+      opts: opts.map((o, i) => {
+        const sel = s.h[id] === i && !(s.own[id] || '').trim();
+        return { label: o, sel, unsel: !sel, pick: () => this.setState({ h: Object.assign({}, s.h, { [id]: i }), own: Object.assign({}, s.own, { [id]: '' }) }) };
+      }),
+      ownOpen: !!s.ownOpen[id], ownClosed: !s.ownOpen[id], own: s.own[id] || '', ownSel: !!(s.own[id] || '').trim(),
+      openOwn: () => this.setState({ ownOpen: Object.assign({}, s.ownOpen, { [id]: true }) }),
+      setOwn: (ev) => this.setState({ own: Object.assign({}, s.own, { [id]: ev.target.value }) })
     }));
     const sec = (key) => {
       const on = s.skip[key];
@@ -35,7 +82,7 @@ export default class OnboardingFuture extends React.Component {
         toggle: () => this.setState({ skip: Object.assign({}, s.skip, { [key]: !on }) })
       };
     };
-    return { dreams, horizons, sd: sec('d'), sh: sec('h') };
+    return { dreams, horizons, dreamOwn: s.dreamOwn, setDreamOwn: (ev) => this.setState({ dreamOwn: ev.target.value }), sd: sec('d'), sh: sec('h'), saving: s.saving, saveError: s.saveError, next: () => this.next() };
   }
 
   render() {
@@ -106,7 +153,7 @@ export default class OnboardingFuture extends React.Component {
 {"Or in your own words"}
 </label>
 {" "}
-<input id="dream-own" type="text" placeholder="Open a tiny bakery that only sells croissants" style={{ height: "52px", padding: "0 20px", borderRadius: "26px", border: "1.5px solid #EFE9D8", background: "#FFFEFA", font: "400 16px Inter, sans-serif", color: "#2A2028", outline: "none" }} />
+<input id="dream-own" type="text" value={vm.dreamOwn} onChange={vm.setDreamOwn} placeholder="Open a tiny bakery that only sells croissants" style={{ height: "52px", padding: "0 20px", borderRadius: "26px", border: "1.5px solid #EFE9D8", background: "#FFFEFA", font: "400 16px Inter, sans-serif", color: "#2A2028", outline: "none" }} />
 </div>
 {" "}
 {(vm.sd.skipped) ? (<>
@@ -154,9 +201,9 @@ export default class OnboardingFuture extends React.Component {
 </>) : null}
 </React.Fragment>))}
 {" "}
-<button type="button" style={{ minHeight: "44px", padding: "10px 14px", textAlign: "left", borderRadius: "14px", border: "1.5px dashed #C9C0A8", background: "transparent", color: "#4D444B", font: "500 14px Inter, sans-serif", cursor: "pointer" }}>
+{(h.ownClosed) ? (<button type="button" onClick={h.openOwn} style={{ minHeight: "44px", padding: "10px 14px", textAlign: "left", borderRadius: "14px", border: "1.5px dashed #C9C0A8", background: "transparent", color: "#4D444B", font: "500 14px Inter, sans-serif", cursor: "pointer" }}>
 {"+ Something else"}
-</button>
+</button>) : (<input type="text" value={h.own} onChange={h.setOwn} autoFocus placeholder="In your own words" aria-label={"Where I see myself in " + h.label} style={{ minHeight: "44px", padding: "10px 14px", borderRadius: "14px", border: h.ownSel ? "1.5px solid #D9C24E" : "1.5px solid #EFE9D8", background: h.ownSel ? "#FCEFA8" : "#FFFFFF", color: "#2A2028", font: "500 14px Inter, sans-serif", boxSizing: "border-box", width: "100%" }} />)}
 </div>
 </div>
 </React.Fragment>))}
@@ -176,11 +223,19 @@ export default class OnboardingFuture extends React.Component {
 {"Back"}
 </Link>
 {" "}
-<Link href="/onboarding/picks" style={{ display: "inline-flex", alignItems: "center", height: "52px", padding: "0 32px", borderRadius: "26px", background: "#7A3E6E", color: "#FFFFFF", fontSize: "16px", fontWeight: "600", textDecoration: "none" }}>
-{"Continue"}
-</Link>
+{(vm.saveError) ? (<span role="alert" style={{ color: "#8A2A2A", fontSize: "14px" }}>
+{vm.saveError}
+</span>) : null}
+<button type="button" onClick={vm.next} disabled={vm.saving} style={{ display: "inline-flex", alignItems: "center", height: "52px", padding: "0 32px", borderRadius: "26px", background: "#7A3E6E", color: "#FFFFFF", fontSize: "16px", fontWeight: "600", textDecoration: "none" , border: "none", font: "600 16px Inter, sans-serif", cursor: vm.saving ? "progress" : "pointer", opacity: vm.saving ? 0.7 : 1 }}>
+{vm.saving ? "Saving…" : "Continue"}
+</button>
 </footer>
 </div>
 </>);
   }
+}
+
+export default function OnboardingFuturePage(props) {
+  const router = useRouter();
+  return <OnboardingFuture {...props} router={router} />;
 }

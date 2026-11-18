@@ -1,6 +1,7 @@
 // Demo data from the design mockup, used until the jobs database is connected
 // (NEXT_PUBLIC_DATA_SOURCE=sample). Shapes match what the Supabase source returns.
 import type { Company, DataSource, JobDetail, JobSummary, WorkMode } from "../types";
+import { choosePicks } from "./picks";
 
 type Raw = Omit<JobSummary, "id" | "companyId" | "roleLabel" | "indLabel" | "lvlLabel" | "l" | "lo" | "hi"> & {
   l: string; lo: number; hi: number;
@@ -111,6 +112,34 @@ export const sampleSource: DataSource = {
     const j = SAMPLE_JOBS.find((x) => x.id === id) ?? (id === "sample" ? SAMPLE_JOBS[0] : undefined);
     return j ? detail(j) : null;
   },
+  async marketStats() {
+    const rows = SAMPLE_JOBS.map((j) => ({ role: j.roleLabel, industry: j.indLabel, lo: j.lo, hi: j.hi }));
+    const med = (xs: number[]) => { const v = xs.slice().sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] * 1000 : null; };
+    const groups = new Map<string, { role: string | null; industry: string | null; allRoles: boolean; allIndustries: boolean; items: typeof rows }>();
+    for (const r of rows) {
+      for (const [role, industry] of [[r.role, r.industry], [r.role, null], [null, r.industry], [null, null]] as const) {
+        const key = `${role}|${industry}`;
+        if (!groups.has(key)) groups.set(key, { role, industry, allRoles: role === null, allIndustries: industry === null, items: [] });
+        groups.get(key)!.items.push(r);
+      }
+    }
+    return [...groups.values()].map((g) => ({ role: g.role, industry: g.industry, allRoles: g.allRoles, allIndustries: g.allIndustries,
+      openings: g.items.length, withPay: g.items.filter((i) => i.lo != null).length,
+      payLo: med(g.items.flatMap((i) => (i.lo != null ? [i.lo] : []))), payHi: med(g.items.flatMap((i) => (i.hi != null ? [i.hi] : []))) }));
+  },
+  async roleFamiliesOf(ids) {
+    return [...new Set(SAMPLE_JOBS.filter((j) => ids.includes(j.id)).map((j) => j.roleLabel))];
+  },
+  async quickPicks(profile, seed) {
+    const cands = SAMPLE_JOBS.map((j) => ({ id: j.id, mono: j.mono, title: j.title, company: j.company, loc: j.loc,
+      lo: j.lo, hi: j.hi, role: j.roleLabel, ind: j.indLabel, skills: [], summary: j.why }));
+    return choosePicks(cands, profile, seed).map(({ c, wild }) => ({
+      id: c.id, mono: c.mono, title: c.title, company: c.company, loc: c.loc,
+      pay: c.lo != null ? `$${c.lo}–${c.hi}k` : "Pay not listed", stage: c.ind, lane: c.role, wild,
+      about: c.summary, does: ["Sample data: connect the jobs database to see real postings."], wants: [],
+    }));
+  },
+
   async getCompany(id): Promise<Company | null> {
     const jobs = SAMPLE_JOBS.filter((j) => j.companyId === id || id === "sample");
     if (!jobs.length) return null;

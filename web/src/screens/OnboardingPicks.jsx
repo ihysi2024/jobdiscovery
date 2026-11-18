@@ -1,50 +1,37 @@
 "use client";
 /* Ported from the mockup (Onboarding-Swipe.dc.html). Layout and behavior match the design. */
 import React from "react";
+import { saveFeedback } from "@/lib/answers";
+
+function doneText(liked, total) {
+  if (!total) return "We couldn't find jobs to show you right now. You can skip this step; we'll learn from what you like later.";
+  if (!liked.length) return "Your reasons for passing tell us what to steer away from. Next, here's what's hiring in New York.";
+  const lanes = [...new Set(liked.map((l) => l.lane).filter(Boolean))];
+  const list = lanes.length > 1 ? lanes.slice(0, -1).join(', ') + ' and ' + lanes[lanes.length - 1] : lanes[0];
+  return 'You liked ' + liked.length + (liked.length === 1 ? ' role' : ' roles') + (list ? ' in ' + list : '') + ". Next, here's what's hiring in New York for roles like these.";
+}
 import Link from "next/link";
 
 export default class OnboardingPicks extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { i: 1, liked: ['ML Engineer, Imaging · Parallax Bio'], passing: false, picked: [], custom: '' };
+    this.state = { i: 0, liked: [], passing: false, picked: [], custom: '', saveError: '' };
+  }
+  record(card, liked, reasons, note) {
+    // Saved as the person goes, so leaving halfway keeps what they've told us.
+    saveFeedback(card.id, liked, reasons, note).catch((e) => this.setState({ saveError: e.message }));
   }
   renderVals() {
     const s = this.state;
-    const deck = [
-      { mono: 'PB', title: 'ML Engineer, Imaging', company: 'Parallax Bio', loc: 'New York · Hybrid', pay: '$165–195k', stage: 'Series C', lane: 'ML · Health', wild: false,
-        about: 'Parallax builds AI tools that help pathologists find cancer in tissue slides sooner. You will join a six-person imaging team that owns models from raw scanner data to the review tool pathologists use every day.',
-        does: ['Build data pipelines for gigapixel whole-slide images', 'Train and evaluate detection and segmentation models in PyTorch', 'Work with staff pathologists to define labels and failure cases', 'Ship models into the clinical review product and monitor them'],
-        wants: ['3+ years shipping ML or production software', 'Experience with medical or microscopy images', 'Strong Python and PyTorch', 'Comfort with cloud training infrastructure'] },
-      { mono: 'OS', title: 'Field Applications Scientist', company: 'Onda Sequencing', loc: 'New York · 40% travel in the Northeast', pay: '$135–165k', stage: 'Public', lane: 'Customer-facing science', wild: true,
-        about: 'Onda makes benchtop sequencers used by academic and pharma labs. Field application scientists are the technical bridge between customers and the product team: part scientist, part engineer, part teacher.',
-        does: ['Install instruments and train lab teams on workflows', 'Troubleshoot runs, from sample prep to analysis software', 'Help customers set up data pipelines for their sequencing output', 'Bring field feedback back to product and engineering'],
-        wants: ['Hands-on experience with sequencing or molecular biology', 'Comfort with Python and bioinformatics tools', 'Clear communication with scientists and engineers', 'Willingness to travel up to 40%'] },
-      { mono: 'TH', title: 'Applied Scientist, Clinical NLP', company: 'Tessellate Health', loc: 'New York · Onsite', pay: '$180–220k', stage: 'Public', lane: 'Research', wild: false,
-        about: 'Tessellate turns clinical notes into structured data for hospitals and payers. The applied science team researches new modeling approaches and hands proven ones to engineering.',
-        does: ['Prototype language models for clinical information extraction', 'Design evaluations with clinicians and annotators', 'Write up results and contribute to publications', 'Partner with engineering to productionize models'],
-        wants: ['Graduate degree or equivalent research experience', 'Publications or a strong research portfolio', 'Experience with modern NLP and LLMs', 'Interest in healthcare data'] },
-      { mono: 'KL', title: 'Product Manager, Lab Automation', company: 'Kiln Labs', loc: 'New York · Hybrid', pay: '$160–190k', stage: 'Series B', lane: 'Product', wild: true,
-        about: 'Kiln builds software that schedules and runs robotic lab equipment for biotech R&D teams. The PM for automation owns how scientists design and launch experiments in the product.',
-        does: ['Spend time in customer labs to understand real workflows', 'Write specs and prioritize the roadmap with engineering', 'Run beta programs with early customers', 'Track adoption and decide what to build next'],
-        wants: ['Background in lab science, engineering, or both', 'Experience working closely with software teams', 'Strong writing and prioritization', 'No prior PM title required'] },
-      { mono: 'NG', title: 'ML Engineer, Sequencing', company: 'Northlight Genomics', loc: 'New York · Hybrid', pay: '$155–185k', stage: 'Series A', lane: 'ML · Biotech', wild: false,
-        about: 'Northlight is a 40-person company building faster genomic analysis for rare disease diagnosis. ML engineers own models end to end, from instrument signal to production.',
-        does: ['Build models that process raw sequencing signal', 'Own training, evaluation and deployment for your models', 'Work directly with wet-lab scientists on new assays', 'Help set ML practices for a growing team'],
-        wants: ['Experience with ML on scientific or signal data', 'Familiarity with sequencing data is a plus', 'Strong Python and software fundamentals', 'Comfort with early-stage ambiguity'] },
-      { mono: 'TF', title: 'Process Engineer, Tissue Printing', company: 'Trellis Fabrication', loc: 'New York · Onsite', pay: '$125–150k', stage: 'Series A', lane: 'Bioengineering', wild: true,
-        about: 'Trellis 3D-prints living tissue for drug testing. Process engineers make printing reliable and repeatable as the company scales from research to production.',
-        does: ['Develop and optimize bioprinting protocols', 'Characterize hydrogels and printed constructs', 'Build data tracking for print runs and quality checks', 'Write SOPs and train technicians'],
-        wants: ['Degree in chemical, biomedical or materials engineering', 'Bioprinting or hydrogel experience', 'Scripting for data analysis (Python preferred)', 'Detail-oriented lab practice'] },
-      { mono: 'CV', title: 'Software Engineer, Data Platform', company: 'Cellvue', loc: 'New York · Hybrid', pay: '$150–180k', stage: 'Series B', lane: 'Software · Biotech', wild: false,
-        about: 'Cellvue makes microscopy analysis software for cell biology labs. The data platform team owns how images and results are stored, searched and shared across customer teams.',
-        does: ['Build and scale services for large image datasets', 'Design APIs used by the analysis and ML teams', 'Improve reliability and cost of the data platform', 'Take part in a light, well-supported on-call rotation'],
-        wants: ['3+ years of backend or data engineering', 'Experience with cloud storage and databases', 'TypeScript or Python', 'Interest in life sciences'] }
-    ];
-    const reasonList = ['Wrong industry', 'Pay too low', 'Too junior', 'Too senior', 'Commute or office days', 'Not the work I want', 'Company too big or too small'];
+    const deck = this.props.deck || [];
+    const reasonList = ['Not the work I want', 'Wrong industry', 'Pay too low', 'Too junior', 'Too senior', 'Commute or office days', 'Company too big or too small', "I don't have the background"];
     const done = s.liked.length >= 3 || s.i >= deck.length;
-    const card = deck[Math.min(s.i, deck.length - 1)];
+    const card = deck[Math.min(s.i, deck.length - 1)] || { mono: '', title: '', company: '', loc: '', pay: '', stage: '', lane: '', wild: false, about: '', does: [], wants: [] };
     const canConfirm = s.picked.length > 0 || s.custom.trim().length > 0;
-    const advance = (liked) => this.setState({ i: s.i + 1, liked: liked ? s.liked.concat(card.title + ' · ' + card.company) : s.liked, passing: false, picked: [], custom: '' });
+    const advance = (liked) => {
+      this.record(card, liked, liked ? [] : s.picked, liked ? '' : s.custom.trim());
+      this.setState({ i: s.i + 1, liked: liked ? s.liked.concat({ label: card.title + ' · ' + card.company, lane: card.lane }) : s.liked, passing: false, picked: [], custom: '' });
+    };
     return {
       card, done, inProgress: !done,
       passing: s.passing, choosing: !s.passing,
@@ -61,7 +48,8 @@ export default class OnboardingPicks extends React.Component {
         return { label, sel: on, unsel: !on, toggle: () => this.setState({ picked: on ? s.picked.filter((x) => x !== label) : s.picked.concat(label) }) };
       }),
       reset: () => this.setState({ i: 0, liked: [], passing: false, picked: [], custom: '' }),
-      likedCount: s.liked.length, likedList: s.liked,
+      likedCount: s.liked.length, likedList: s.liked.map((l) => l.label), saveError: s.saveError,
+      doneText: doneText(s.liked, deck.length),
       dots: [0, 1, 2].map((n) => ({ on: n < s.liked.length, off: n >= s.liked.length }))
     };
   }
@@ -159,7 +147,7 @@ export default class OnboardingPicks extends React.Component {
 </>) : null}
 {" "}
 <span style={{ fontSize: "13px", color: "#665D63" }}>
-{vm.position}
+{vm.position}{vm.saveError ? " · couldn't save: " + vm.saveError : ""}
 </span>
 </div>
 </div>
@@ -188,7 +176,7 @@ export default class OnboardingPicks extends React.Component {
 </span>
 </div>
 {" "}
-<div style={{ display: "flex", flexDirection: "column", gap: "18px", paddingTop: "20px", borderTop: "1px solid #F3EFE2", fontSize: "15px", lineHeight: "1.6", color: "#2F272D" }}>
+{((vm.card.does || []).length) ? (<>{((vm.card.wants || []).length) ? (<><div style={{ display: "flex", flexDirection: "column", gap: "18px", paddingTop: "20px", borderTop: "1px solid #F3EFE2", fontSize: "15px", lineHeight: "1.6", color: "#2F272D" }}>
 <section style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
 <h3 style={{ margin: "0", fontSize: "12px", fontWeight: "600", letterSpacing: "0.08em", textTransform: "uppercase", color: "#665D63" }}>
 {"About the role"}
@@ -226,7 +214,7 @@ export default class OnboardingPicks extends React.Component {
 </React.Fragment>))}
 </ul>
 </section>
-</div>
+</div></>) : null}</>) : null}
 </article>
 </div>
 {" "}
@@ -302,11 +290,11 @@ export default class OnboardingPicks extends React.Component {
 {(vm.done) ? (<>
 <div style={{ background: "#FFFFFF", borderRadius: "28px", padding: "40px", boxShadow: "0 1px 2px rgba(42,32,40,0.06), 0 16px 40px rgba(42,32,40,0.10)", display: "flex", flexDirection: "column", gap: "16px", marginTop: "20px" }}>
 <h2 style={{ margin: "0", fontFamily: "'Instrument Serif', serif", fontWeight: "400", fontSize: "44px", lineHeight: "1.05" }}>
-{"That's a good read on you."}
+{vm.likedCount ? "That's a good read on you." : "Nothing clicked, and that's useful too."}
 </h2>
 {" "}
 <p style={{ margin: "0", fontSize: "16px", lineHeight: "1.6", color: "#4D444B" }}>
-{"You leaned toward hands-on ML work in health, with a clear mission, at smaller companies. Next, here's how the market looks for roles like these."}
+{vm.doneText}
 </p>
 {" "}
 <button type="button" onClick={vm.reset} style={{ alignSelf: "flex-start", height: "44px", padding: "0 18px", borderRadius: "22px", border: "1.5px solid #EFE9D8", background: "#FFFFFF", font: "500 14px Inter, sans-serif", color: "#2A2028", cursor: "pointer" }}>

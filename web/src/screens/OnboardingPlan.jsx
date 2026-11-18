@@ -1,24 +1,72 @@
 "use client";
 /* Ported from the mockup (Onboarding-Plan.dc.html). Layout and behavior match the design. */
 import React from "react";
+import { useRouter } from "next/navigation";
+import { loadPlan, savePlan } from "@/lib/answers";
 import Link from "next/link";
 
-export default class OnboardingPlan extends React.Component {
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const TIMES = [['07:30', '7:30 am'], ['08:30', '8:30 am'], ['12:00', '12:00 pm'], ['18:00', '6:00 pm']];
+const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const addMonths = (d, n) => { const x = new Date(d); x.setMonth(x.getMonth() + n); return x; };
+const isoDay = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+
+class OnboardingPlan extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { date: 'mar', custom: null, calOpen: false, calY: 2026, calM: 10, hours: 10, flexible: true, days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] };
+    const t = today();
+    // Nothing chosen to start with.
+    this.state = { date: null, custom: null, calOpen: false, calY: t.getFullYear(), calM: t.getMonth(), hours: null, flexible: false, days: [], time: '', email: '', saving: false, saveError: '' };
+  }
+  async componentDidMount() {
+    try {
+      const { user, row } = await loadPlan();
+      const next = { email: (user && user.email) || '' };
+      if (row) {
+        if (row.offer_by) { next.date = 'custom'; next.custom = new Date(row.offer_by + 'T00:00:00').getTime(); }
+        next.flexible = !!row.date_flexible;
+        next.hours = row.hours_per_week || null;
+        next.days = (row.email_days || []).map((d) => d[0].toUpperCase() + d.slice(1, 3));
+        next.time = (row.email_time || '').slice(0, 5);
+      }
+      this.setState(next);
+    } catch (e) {
+      this.setState({ saveError: e.message });
+    }
+  }
+  target() {
+    const s = this.state;
+    if (s.date === 'custom') return s.custom ? new Date(s.custom) : null;
+    return s.date ? addMonths(today(), Number(s.date)) : null;
+  }
+  async next() {
+    const s = this.state;
+    const t = this.target();
+    this.setState({ saving: true, saveError: '' });
+    try {
+      await savePlan({
+        offer_by: t ? isoDay(t) : null, date_flexible: s.flexible, hours_per_week: s.hours,
+        email_days: s.days.map((d) => d.toLowerCase()), email_time: s.time || null,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York'
+      });
+      this.props.router.push('/matching');
+    } catch (e) {
+      this.setState({ saving: false, saveError: e.message });
+    }
   }
   renderVals() {
     const s = this.state;
-    const TODAY = new Date(2026, 10, 18);
-    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const MONL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const TODAY = today();
     const fmt = (d) => MON[d.getMonth()] + ' ' + d.getDate();
-    const P = { jan: new Date(2027, 0, 15), mar: new Date(2027, 2, 1), may: new Date(2027, 4, 1) };
-    const target = s.date === 'custom' && s.custom ? new Date(s.custom) : P[s.date];
-    const weeks = Math.max(1, Math.ceil((target - TODAY) / (7 * 864e5)));
+    const target = this.target();
+    const weeks = target ? Math.max(1, Math.ceil((target - TODAY) / (7 * 864e5))) : null;
 
-    const dates = Object.keys(P).map((k) => ({ label: 'By ' + fmt(P[k]), sel: s.date === k, unsel: s.date !== k, pick: () => this.setState({ date: k, calOpen: false }) }));
+    const dates = [2, 4, 6].map((n) => {
+      const k = String(n);
+      return { label: 'By ' + fmt(addMonths(TODAY, n)), sel: s.date === k, unsel: s.date !== k, pick: () => this.setState({ date: s.date === k ? null : k, calOpen: false }) };
+    });
     const customSel = s.date === 'custom' && !!s.custom;
 
     // calendar
@@ -38,14 +86,19 @@ export default class OnboardingPlan extends React.Component {
     const shift = (n) => { let nm = m + n, ny = y; if (nm < 0) { nm = 11; ny--; } if (nm > 11) { nm = 0; ny++; } this.setState({ calY: ny, calM: nm }); };
 
     // targets: only applications and outreach
-    const appsWeek = Math.min(15, Math.max(3, Math.round(90 / weeks)));
-    const outWeek = Math.round(appsWeek * 1.3);
-    const nDays = Math.max(1, s.days.length);
-    const perDay = (w) => { const lo = Math.floor(w / nDays), hi = Math.ceil(w / nDays); return lo === hi ? String(lo) : (lo || 1) + '–' + hi; };
-    const hoursNeeded = Math.ceil(appsWeek * 0.5 + outWeek * 0.15);
-    const lastApply = new Date(target.getTime() - 35 * 864e5);
-    let note = 'Roles in your top lane take about 5 weeks from application to offer, so plan to send your last applications by ' + fmt(lastApply) + '.';
-    if (hoursNeeded > s.hours) note = 'This pace needs about ' + hoursNeeded + ' hours a week, more than you have. A later date or a flexible one would ease it.';
+    const appsWeek = weeks ? Math.min(15, Math.max(3, Math.round(90 / weeks))) : null;
+    const outWeek = appsWeek ? Math.round(appsWeek * 1.3) : null;
+    const nDays = s.days.length;
+    const perDay = (w) => { if (!w || !nDays) return '—'; const lo = Math.floor(w / nDays), hi = Math.ceil(w / nDays); return lo === hi ? String(lo) : (lo || 1) + '–' + hi; };
+    const hoursNeeded = appsWeek ? Math.ceil(appsWeek * 0.5 + outWeek * 0.15) : 0;
+    let note = 'Pick a date and how much time you have each week, and we\'ll work out a pace.';
+    if (target) {
+      const lastApply = new Date(target.getTime() - 35 * 864e5);
+      note = lastApply > TODAY
+        ? 'Hiring often takes four to six weeks from application to offer, so plan to send your last applications by ' + fmt(lastApply) + '.'
+        : 'That date is close: most hiring takes four to six weeks from application to offer, so a flexible or later date may be more realistic.';
+      if (s.hours && hoursNeeded > s.hours) note = 'This pace needs about ' + hoursNeeded + ' hours a week, more than you have. A later date or a flexible one would ease it.';
+    }
 
     return {
       dates, customSel, customUnsel: !customSel,
@@ -54,13 +107,16 @@ export default class OnboardingPlan extends React.Component {
       monthLabel: MONL[m] + ' ' + y, cells,
       prevMonth: () => { if (!atMin) shift(-1); }, nextMonth: () => shift(1),
       prevDisabled: atMin, prevOp: atMin ? '0.4' : '1',
-      hours: [5, 10, 20, 30].map((h) => ({ label: h === 30 ? '30+ hrs' : h + ' hrs', sel: s.hours === h, unsel: s.hours !== h, pick: () => this.setState({ hours: h }) })),
-      days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((x) => {
+      hours: [5, 10, 20, 30].map((h) => ({ label: h === 30 ? '30+ hrs' : h + ' hrs', sel: s.hours === h, unsel: s.hours !== h, pick: () => this.setState({ hours: s.hours === h ? null : h }) })),
+      days: DAYS.map((x) => {
         const on = s.days.indexOf(x) >= 0;
         return { label: x, sel: on, unsel: !on, toggle: () => this.setState({ days: on ? s.days.filter((z) => z !== x) : s.days.concat(x) }) };
       }),
-      weeks, dateLabel: fmt(target),
-      appsWeek, outWeek, appsDay: perDay(appsWeek), outDay: perDay(outWeek), note,
+      weeksText: weeks ? weeks + ' weeks' : 'Pick a date', byText: target ? 'to an offer by ' + fmt(target) : 'to see your weekly pace',
+      appsWeek: appsWeek || '—', outWeek: outWeek || '—', appsDay: perDay(appsWeek), outDay: perDay(outWeek), note,
+      time: s.time, setTime: (ev) => this.setState({ time: ev.target.value }),
+      emailLine: s.email ? 'by email to ' + s.email : 'by email',
+      saving: s.saving, saveError: s.saveError, next: () => this.next(),
       flexible: s.flexible, toggleFlex: () => this.setState({ flexible: !s.flexible })
     };
   }
@@ -269,24 +325,14 @@ export default class OnboardingPlan extends React.Component {
 <div style={{ display: "flex", flexWrap: "wrap", gap: "16px", alignItems: "center", fontSize: "15px", color: "#3D343B" }}>
 <label style={{ display: "flex", alignItems: "center", gap: "10px" }}>
 {"at "}
-<select style={{ height: "44px", padding: "0 14px", borderRadius: "22px", border: "1.5px solid #EFE9D8", background: "#FFFFFF", font: "500 15px Inter, sans-serif", color: "#2A2028" }}>
-<option>
-{"7:30 am"}
-</option>
-<option selected={true}>
-{"8:30 am"}
-</option>
-<option>
-{"12:00 pm"}
-</option>
-<option>
-{"6:00 pm"}
-</option>
+<select value={vm.time} onChange={vm.setTime} aria-label="Time to send the to-do list" style={{ height: "44px", padding: "0 14px", borderRadius: "22px", border: "1.5px solid #EFE9D8", background: "#FFFFFF", font: "500 15px Inter, sans-serif", color: "#2A2028" }}>
+<option value="">{"Pick a time"}</option>
+{TIMES.map(([v, label]) => (<option key={v} value={v}>{label}</option>))}
 </select>
 </label>
 {" "}
 <span>
-{"by email to jordan.reyes@gmail.com"}
+{vm.emailLine}
 </span>
 </div>
 </section>
@@ -300,11 +346,11 @@ export default class OnboardingPlan extends React.Component {
 <div style={{ background: "#7A3E6E", color: "#FFFFFF", borderRadius: "28px", padding: "32px", display: "flex", flexDirection: "column", gap: "24px" }}>
 <div>
 <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: "40px", lineHeight: "1" }}>
-{vm.weeks}{" weeks"}
+{vm.weeksText}
 </div>
 {" "}
 <div style={{ marginTop: "6px", color: "#F0DDEA", fontSize: "15px" }}>
-{"to an offer by "}{vm.dateLabel}
+{vm.byText}
 </div>
 </div>
 {" "}
@@ -378,11 +424,19 @@ export default class OnboardingPlan extends React.Component {
 {"Back"}
 </Link>
 {" "}
-<Link href="/matching" style={{ display: "inline-flex", alignItems: "center", height: "52px", padding: "0 32px", borderRadius: "26px", background: "#7A3E6E", color: "#FFFFFF", fontSize: "16px", fontWeight: "600", textDecoration: "none" }}>
-{"Find my matches"}
-</Link>
+{(vm.saveError) ? (<span role="alert" style={{ color: "#8A2A2A", fontSize: "14px" }}>
+{vm.saveError}
+</span>) : null}
+<button type="button" onClick={vm.next} disabled={vm.saving} style={{ display: "inline-flex", alignItems: "center", height: "52px", padding: "0 32px", borderRadius: "26px", background: "#7A3E6E", color: "#FFFFFF", fontSize: "16px", fontWeight: "600", textDecoration: "none" , border: "none", font: "600 16px Inter, sans-serif", cursor: vm.saving ? "progress" : "pointer", opacity: vm.saving ? 0.7 : 1 }}>
+{vm.saving ? "Saving…" : "Find my matches"}
+</button>
 </footer>
 </div>
 </>);
   }
+}
+
+export default function OnboardingPlanPage(props) {
+  const router = useRouter();
+  return <OnboardingPlan {...props} router={router} />;
 }

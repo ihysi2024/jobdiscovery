@@ -1,18 +1,46 @@
 "use client";
 /* Ported from the mockup (Onboarding-Priorities.dc.html). Layout and behavior match the design. */
 import React from "react";
+import { useRouter } from "next/navigation";
+import { loadPreferences, savePreferences } from "@/lib/answers";
 import Link from "next/link";
 
-export default class OnboardingPriorities extends React.Component {
+class OnboardingPriorities extends React.Component {
   constructor(props) {
     super(props);
+    // Nothing chosen to start with; saved answers load in componentDidMount.
     this.state = {
-      pri: ['mission', 'work', 'wlb'],
-      trade: { mission: 'Yes', title: 'Maybe', commute: 'No', stability: 'Maybe', office: 'Maybe', tenure: 'Yes', promo: 'Maybe', field: 'No' },
-      modes: ['hybrid'],
-      boroughs: ['manhattan', 'brooklyn'],
-      skip: { pri: false, trade: false, loc: false }
+      pri: [], ownPri: [], adding: false, newPri: '', trade: {}, modes: [], boroughs: [],
+      skip: { pri: false, trade: false, loc: false },
+      saving: false, saveError: ''
     };
+  }
+  async componentDidMount() {
+    try {
+      const { row } = await loadPreferences();
+      if (!row) return;
+      this.setState({
+        pri: row.priorities || [], ownPri: (row.priorities || []).filter((x) => x.startsWith('own:')), trade: row.tradeoffs || {},
+        modes: row.work_modes || [], boroughs: row.nyc_areas || []
+      });
+    } catch (e) {
+      this.setState({ saveError: e.message });
+    }
+  }
+  async next() {
+    const s = this.state;
+    this.setState({ saving: true, saveError: '' });
+    try {
+      await savePreferences({
+        priorities: s.skip.pri ? null : s.pri,
+        tradeoffs: s.skip.trade ? null : s.trade,
+        work_modes: s.skip.loc ? null : s.modes,
+        nyc_areas: s.skip.loc ? null : s.boroughs
+      });
+      this.props.router.push('/onboarding/future');
+    } catch (e) {
+      this.setState({ saving: false, saveError: e.message });
+    }
   }
   renderVals() {
     const s = this.state;
@@ -31,7 +59,8 @@ export default class OnboardingPriorities extends React.Component {
       ['comp', 'Compensation'], ['status', 'Status & prestige'], ['culture', 'Culture & people'],
       ['growth', 'Learning & growth'], ['stability', 'Stability'], ['flex', 'Flexibility']
     ];
-    const priorities = priList.map(([id, label]) => {
+    const allPri = priList.concat(s.ownPri.map((id) => [id, id.slice(4)]));
+    const priorities = allPri.map(([id, label]) => {
       const i = s.pri.indexOf(id);
       return {
         label, sel: i >= 0, unsel: i < 0, rank: i + 1,
@@ -65,7 +94,24 @@ export default class OnboardingPriorities extends React.Component {
       return { label, sel: on, unsel: !on, toggle: () => this.setState({ [key]: on ? s[key].filter((x) => x !== id) : s[key].concat(id) }) };
     });
     return {
+      saving: s.saving, saveError: s.saveError, next: () => this.next(),
       sp: sec('pri'), st: sec('trade'), sl: sec('loc'),
+      adding: s.adding, notAdding: !s.adding, newPri: s.newPri,
+      startAdd: () => this.setState({ adding: true }),
+      setNewPri: (ev) => this.setState({ newPri: ev.target.value }),
+      addPri: (ev) => {
+        if (ev && ev.type === 'keydown' && ev.key !== 'Enter') { if (ev.key === 'Escape') this.setState({ adding: false, newPri: '' }); return; }
+        if (ev && ev.preventDefault) ev.preventDefault();
+        const text = this.state.newPri.trim().slice(0, 40);
+        if (!text) { this.setState({ adding: false }); return; }
+        const id = 'own:' + text;
+        const st = this.state;
+        this.setState({
+          ownPri: st.ownPri.indexOf(id) >= 0 ? st.ownPri : st.ownPri.concat(id),
+          pri: st.pri.indexOf(id) >= 0 || st.pri.length >= 3 ? st.pri : st.pri.concat(id),
+          adding: false, newPri: ''
+        });
+      },
       priorities, tradeoffs,
       modes: chips('modes', [['office', 'In the office'], ['hybrid', 'Hybrid'], ['remote', 'Remote, from NYC']]),
       boroughs: chips('boroughs', [['manhattan', 'Manhattan'], ['brooklyn', 'Brooklyn'], ['queens', 'Queens'], ['bronx', 'The Bronx'], ['si', 'Staten Island'], ['any', "Doesn't matter"]])
@@ -139,9 +185,9 @@ export default class OnboardingPriorities extends React.Component {
 </>) : null}
 </React.Fragment>))}
 {" "}
-<button type="button" style={{ height: "44px", padding: "0 18px", borderRadius: "22px", border: "1.5px dashed #C9C0A8", background: "transparent", color: "#4D444B", font: "500 15px Inter, sans-serif", cursor: "pointer" }}>
+{(vm.notAdding) ? (<button type="button" onClick={vm.startAdd} style={{ height: "44px", padding: "0 18px", borderRadius: "22px", border: "1.5px dashed #C9C0A8", background: "transparent", color: "#4D444B", font: "500 15px Inter, sans-serif", cursor: "pointer" }}>
 {"+ Add your own"}
-</button>
+</button>) : (<input type="text" value={vm.newPri} onChange={vm.setNewPri} onKeyDown={vm.addPri} onBlur={vm.addPri} autoFocus maxLength={40} placeholder="Type it, then press Enter" aria-label="Your own priority" style={{ height: "44px", padding: "0 18px", borderRadius: "22px", border: "1.5px solid #D9C24E", background: "#FFFFFF", color: "#2A2028", font: "500 15px Inter, sans-serif", minWidth: "220px" }} />)}
 </div>
 </div>
 {" "}
@@ -284,11 +330,19 @@ export default class OnboardingPriorities extends React.Component {
 {"Back"}
 </Link>
 {" "}
-<Link href="/onboarding/future" style={{ display: "inline-flex", alignItems: "center", height: "52px", padding: "0 32px", borderRadius: "26px", background: "#7A3E6E", color: "#FFFFFF", fontSize: "16px", fontWeight: "600", textDecoration: "none" }}>
-{"Continue"}
-</Link>
+{(vm.saveError) ? (<span role="alert" style={{ color: "#8A2A2A", fontSize: "14px" }}>
+{vm.saveError}
+</span>) : null}
+<button type="button" onClick={vm.next} disabled={vm.saving} style={{ display: "inline-flex", alignItems: "center", height: "52px", padding: "0 32px", borderRadius: "26px", background: "#7A3E6E", color: "#FFFFFF", fontSize: "16px", fontWeight: "600", textDecoration: "none" , border: "none", font: "600 16px Inter, sans-serif", cursor: vm.saving ? "progress" : "pointer", opacity: vm.saving ? 0.7 : 1 }}>
+{vm.saving ? "Saving…" : "Continue"}
+</button>
 </footer>
 </div>
 </>);
   }
+}
+
+export default function OnboardingPrioritiesPage(props) {
+  const router = useRouter();
+  return <OnboardingPriorities {...props} router={router} />;
 }

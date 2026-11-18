@@ -41,3 +41,24 @@ export async function currentUser(): Promise<AppUser | null> {
     avatarUrl: meta.avatar_url || meta.picture || null,
   };
 }
+
+/** The signed-in person's saved profile (resume details), or null. */
+export async function loadOwnProfile(): Promise<{ headline: string; skills: string[]; exp: { role: string }[] } | null> {
+  if (!AUTH_ENABLED) return null;
+  const supabase = await supabaseServer();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return null;
+  const { data } = await supabase.from("profiles").select("headline, skills, experience").eq("user_id", auth.user.id).maybeSingle();
+  if (!data) return null;
+  return { headline: data.headline || "", skills: data.skills || [], exp: data.experience || [] };
+}
+
+/** Ids of jobs the signed-in person liked in quick picks. */
+export async function likedPostingIds(): Promise<string[]> {
+  if (!AUTH_ENABLED) return [];
+  const supabase = await supabaseServer();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return [];
+  const { data } = await supabase.from("job_feedback").select("posting_id").eq("user_id", auth.user.id).eq("liked", true);
+  return ((data ?? []) as { posting_id: number }[]).map((r) => String(r.posting_id));
+}
