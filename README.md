@@ -85,9 +85,16 @@ All three can also be started by hand from the **Actions** tab ("Run workflow").
 ### One-time setup
 
 1. **Create a Postgres database.** Any hosted Postgres works; Supabase and
-   Neon both have free tiers. Copy its connection string
-   (`postgresql://user:password@host:5432/dbname`). Use the
-   SSL/"direct connection" string they give you.
+   Neon both have free tiers. Which connection string to copy matters:
+   * **Supabase:** click **Connect** and copy the **Session pooler** string
+     (`postgresql://postgres.<ref>:<password>@<region>.pooler.supabase.com:5432/postgres`).
+     Not "Direct connection": that one is IPv6-only, and GitHub Actions runners
+     only have IPv4. Not "Transaction pooler" (port 6543) either.
+   * **Neon:** click **Connect**, turn **Connection pooling off**, and copy the
+     direct string (no `-pooler` in the hostname, ends in `?sslmode=require...`).
+   * Replace `[YOUR-PASSWORD]` with your real database password.
+   * Why not the transaction-mode poolers: the poller relies on prepared
+     statements and per-session behavior that those poolers don't support.
 2. **Add it to the repo.** Settings → Secrets and variables → Actions:
    * Secret `DATABASE_URL`: the connection string.
    * Variable `JOBDISCOVERY_CONTACT`: an email address site owners can reach you at.
