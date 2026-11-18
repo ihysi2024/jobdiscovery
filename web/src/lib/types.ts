@@ -28,6 +28,7 @@ export interface JobSummary {
   summary?: string;        // the job's own one-line summary
   fit?: number | null;     // 0-100 match for the signed-in person (Best match only)
   skills?: string[];
+  copies?: number;         // how many postings this role stands for (one per office, for some employers)
   possible?: boolean;      // a stretch fit rather than a strong match
 }
 

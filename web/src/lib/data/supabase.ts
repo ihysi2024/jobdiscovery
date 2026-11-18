@@ -54,7 +54,7 @@ type Process = { stages: { stage: string; detail: string }[]; timeline: string |
 
 export const LEVEL_LABELS = LEVEL;
 
-interface SearchRow extends Row { mode: WorkMode; has_process: boolean }
+interface SearchRow extends Row { mode: WorkMode; has_process: boolean; copies?: number }
 
 /** Characters that would break PostgREST's or=() filter syntax. */
 const cleanQuery = (q: string) => q.replace(/[,()*%\\:."']/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
@@ -65,7 +65,7 @@ export async function searchJobs(q: JobQuery): Promise<JobPage> {
   let query = db()
     .from("jobs_search")
     .select("id, board_key, company_name, title, first_seen_at, industry, role_family, seniority, mode, " +
-            "salary_min_annual, salary_max_annual, has_process, interview_process, summary, skills", { count: "exact" });
+            "salary_min_annual, salary_max_annual, has_process, interview_process, summary, skills, copies", { count: "exact" });
   if (q.ids?.length) query = query.in("id", q.ids.map(Number));
   const skip = (q.excludeIds ?? []).filter((x) => /^\d+$/.test(x)).slice(0, 500);
   if (skip.length) query = query.not("id", "in", `(${skip.join(",")})`);
@@ -91,7 +91,7 @@ export async function searchJobs(q: JobQuery): Promise<JobPage> {
   }
   Object.values(facets).forEach((list) => list.sort((a, b) => b.n - a.n));
   const jobs = ((data ?? []) as unknown as SearchRow[]).map((r) => ({
-    ...toSummary({ ...r, work_mode: r.mode }), process: r.has_process, skills: parse<string[]>(r.skills) ?? [],
+    ...toSummary({ ...r, work_mode: r.mode }), process: r.has_process, skills: parse<string[]>(r.skills) ?? [], copies: r.copies ?? 1,
   }));
   return { jobs, total: count ?? 0, facets };
 }

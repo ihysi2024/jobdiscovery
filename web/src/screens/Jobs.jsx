@@ -279,6 +279,7 @@ export default function Jobs({ page, query, error, signedIn = false, minFit = /*
                         {j.lvl && j.lvl !== "unknown" ? <span style={{ padding: "4px 10px", borderRadius: "6px", background: C.chip, fontSize: "12px" }}>{LEVEL[j.lvl] || j.lvl}</span> : null}
                         {j.process ? <span style={{ padding: "4px 10px", borderRadius: "6px", background: C.plumSoft, color: "#5E2A54", fontSize: "12px" }}>Interview process · {j.steps} steps</span> : null}
                         <span style={{ padding: "4px 10px", borderRadius: "6px", background: C.chip, fontSize: "12px" }}>{ageOf(j.days)}</span>
+                        {j.copies > 1 ? <span title="The employer posted this role separately for different offices" style={{ padding: "4px 10px", borderRadius: "6px", background: C.chip, fontSize: "12px" }}>Posted {j.copies} times</span> : null}
                       </div>
                     </div>
                   </Link>
