@@ -173,12 +173,18 @@ _SENTENCE_END = re.compile(r"(?<=[a-z0-9)%][.!?])\s+(?=[A-Z0-9])")
 _BOILERPLATE_STEP = re.compile(r"accommodat|EEO|equal (employment )?opportunity|disabilit|reach out to|e-?mail us", re.I)
 
 
+_NULL_RUN = re.compile(r"[\s,;:.]*\bnull\b(?:[\s,;:.]*\bnull\b)+[\s,;:.]*|[\s,;:]+\bnull\b[\s,;:.]*$", re.I)
+
+
 def clean_summary(text: str | None) -> str | None:
     """Keep the first sentence. Small models sometimes keep talking after it."""
     if not text:
         return None
     first = _SENTENCE_END.split(text.strip(), maxsplit=1)[0].strip()
     first = re.sub(r"[^\x00-\u024F\u2010-\u2027]+.*$", "", first).strip()  # stray non-Latin text
+    cut = _NULL_RUN.sub("", first).strip().rstrip(",;:").strip()  # "..., null, null, null" padding
+    if cut != first:
+        first = cut + ("." if cut and cut[-1] not in ".!?…" else "")
     if len(first) > 200:
         first = first[:200].rsplit(" ", 1)[0].rstrip(",;:") + "…"
     return first or None

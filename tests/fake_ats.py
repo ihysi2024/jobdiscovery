@@ -114,6 +114,9 @@ BOFA = {"totalMatches": 1, "jobsList": [
 ]}
 
 
+DETAIL_CALLS: list[str] = []
+
+
 def handler(request: httpx.Request) -> httpx.Response:
     url = request.url
     host, path = url.host, url.path
@@ -133,6 +136,11 @@ def handler(request: httpx.Request) -> httpx.Response:
 
     if host == "api.smartrecruiters.com" and path == "/v1/companies/HealthCo/postings":
         return httpx.Response(200, json=SMARTRECRUITERS)
+    if host == "api.smartrecruiters.com" and path == "/v1/companies/HealthCo/postings/sr1":
+        DETAIL_CALLS.append(path)
+        return httpx.Response(200, json={"jobAd": {"sections": {
+            "jobDescription": {"title": "Job Description", "text": "<p>Lead a nursing unit.</p>"},
+            "qualifications": {"title": "Qualifications", "text": "<ul><li>RN license</li></ul>"}}}})
 
     if host == "megacorp.wd5.myworkdayjobs.com":
         if request.method == "POST" and path == "/wday/cxs/megacorp/External/jobs":

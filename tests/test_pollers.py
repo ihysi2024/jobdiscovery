@@ -116,3 +116,20 @@ def test_workday_requests_share_one_limit_and_429_pauses_the_group():
             return time.monotonic() - t
     elapsed = asyncio.run(go())
     assert len(calls) == 3 and elapsed >= 0.2
+
+
+def test_smartrecruiters_fetches_nyc_descriptions_once():
+    from fake_ats import DETAIL_CALLS
+    DETAIL_CALLS.clear()
+    jobs = run(Board("smartrecruiters", "HealthCo"))
+    nyc = next(j for j in jobs if j.external_id == "sr1")
+    assert "Lead a nursing unit." in nyc.description_text and "RN license" in nyc.description_text
+    assert next(j for j in jobs if j.external_id == "sr2").description_text == ""   # Albany: not fetched
+    assert len(DETAIL_CALLS) == 1
+
+    async def again():
+        async with PoliteClient(transport=transport(), base_delay=0) as c:
+            return await poll_board(c, Board("smartrecruiters", "HealthCo"), {"sr1": "Stored text"})
+    jobs = asyncio.run(again())
+    assert next(j for j in jobs if j.external_id == "sr1").description_text == "Stored text"
+    assert len(DETAIL_CALLS) == 1   # reused, no new request

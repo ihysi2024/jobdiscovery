@@ -221,13 +221,17 @@ async def poll_workday(client: PoliteClient, board: Board, *, max_jobs: int = 50
         for j in postings:
             path = j.get("externalPath") or ""
             locs = [j["locationsText"]] if j.get("locationsText") else []
+            desc = ""
             if locs and _MULTI_LOC.match(locs[0]):
-                locs = await _workday_detail_locations(client, base, path) or locs
+                info = await _workday_detail(client, base, path)
+                locs = [l for l in [info.get("location")] + list(info.get("additionalLocations") or []) if l] or locs
+                desc = html_to_text(info.get("jobDescription"))
             out.append(Posting(
                 ats="workday", board_key=board.key, external_id=path or j.get("title", ""),
                 title=j.get("title", ""), locations=_dedupe(locs),
                 url=f"https://{tenant}.{wd}.myworkdayjobs.com/{quote(site)}{path}",
                 posted_at=j.get("postedOn") or "",
+                description_text=desc,
                 is_remote=any("remote" in l.lower() for l in locs),
                 raw=j,
             ))
@@ -257,24 +261,21 @@ def _workday_nyc_facets(facets: list) -> dict[str, list[str]]:
     return {best: found[best]}
 
 
-async def _workday_detail_locations(client: PoliteClient, base: str, path: str) -> list[str]:
+async def _workday_detail(client: PoliteClient, base: str, path: str) -> dict:
     if not path:
-        return []
+        return {}
     try:
         resp = await client.get(f"{base}{path}")
         if resp.status_code != 200:
-            return []
-        info = resp.json().get("jobPostingInfo") or {}
+            return {}
+        return resp.json().get("jobPostingInfo") or {}
     except Exception:  # detail is best-effort
-        return []
-    locs = [info.get("location")] + list(info.get("additionalLocations") or [])
-    return [l for l in locs if l]
+        return {}
 
 
 # --------------------------------------------------------------------------- Oracle Recruiting Cloud
 
 _ORACLE_PAGE = 100
-_ORACLE_DETAILS_MAX = 1500  # detail calls per poll, NYC postings only
 
 
 async def poll_oracle(client: PoliteClient, board: Board, *, max_jobs: int = 30000) -> list[Posting]:
@@ -312,13 +313,6 @@ async def poll_oracle(client: PoliteClient, board: Board, *, max_jobs: int = 300
         offset += len(reqs)
         if not reqs or offset >= total:
             break
-    # Full descriptions come from one detail call per job, so only fetch them for NYC jobs.
-    nyc = [p for p in out if any_nyc(p.locations)][:_ORACLE_DETAILS_MAX]
-    for p in nyc:
-        detail = await _oracle_detail(client, api, site, p.external_id)
-        if detail:
-            p.description_text = "\n\n".join(filter(None, (html_to_text(detail.get(k)) for k in (
-                "ExternalDescriptionStr", "ExternalResponsibilitiesStr", "ExternalQualificationsStr")))) or p.description_text
     return out
 
 
@@ -478,9 +472,75 @@ POLLERS = {
 }
 
 
-async def poll_board(client: PoliteClient, board: Board) -> list[Posting]:
+# --------------------------------------------------------------------------- descriptions from detail pages
+
+# Some hiring systems leave the description out of their job list; it takes one
+# more request per job. Only NYC jobs get one, a description already stored for
+# the same job is reused (so a job's details are fetched once, not every poll),
+# and each board gets at most this many new detail requests per poll.
+DETAIL_CAP = {"smartrecruiters": 400, "workday": 150, "oracle": 1500}
+
+
+async def _detail_smartrecruiters(client, board, p) -> str:
+    resp = await client.get(f"https://api.smartrecruiters.com/v1/companies/{quote(board.token)}/postings/{quote(p.external_id)}")
+    if resp.status_code != 200:
+        return ""
+    sec = ((resp.json().get("jobAd") or {}).get("sections") or {})
+    parts = []
+    for key in ("jobDescription", "qualifications", "additionalInformation", "companyDescription"):
+        x = sec.get(key) or {}
+        text = html_to_text(x.get("text"))
+        if text:
+            parts.append(f"{x['title']}\n{text}" if x.get("title") else text)
+    return "\n\n".join(parts)
+
+
+async def _detail_workday(client, board, p) -> str:
+    tenant, wd, site = board.token.split("|", 2)
+    base = f"https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{quote(site)}"
+    return html_to_text((await _workday_detail(client, base, p.external_id)).get("jobDescription"))
+
+
+async def _detail_oracle(client, board, p) -> str:
+    host, site = board.token.split("|", 1)
+    d = await _oracle_detail(client, f"https://{host}/hcmRestApi/resources/latest", site, p.external_id)
+    if not d:
+        return ""
+    return "\n\n".join(filter(None, (html_to_text(d.get(k)) for k in (
+        "ExternalDescriptionStr", "ExternalResponsibilitiesStr", "ExternalQualificationsStr"))))
+
+
+DETAILS = {"smartrecruiters": _detail_smartrecruiters, "workday": _detail_workday, "oracle": _detail_oracle}
+
+
+async def fill_descriptions(client: PoliteClient, board: Board, postings: list[Posting], known: dict[str, str]) -> None:
+    fetch = DETAILS.get(board.ats)
+    if not fetch:
+        return
+    budget = DETAIL_CAP.get(board.ats, 100)
+    for p in postings:
+        if not any_nyc(p.locations) or (p.description_text and board.ats != "oracle"):
+            continue
+        if known.get(p.external_id):
+            p.description_text = known[p.external_id]
+            continue
+        if budget <= 0:
+            continue
+        budget -= 1
+        try:
+            text = await fetch(client, board, p)
+        except (httpx.HTTPError, ValueError, KeyError):  # best-effort; try again next poll
+            text = ""
+        if text:
+            p.description_text = text
+
+
+async def poll_board(client: PoliteClient, board: Board, known: dict[str, str] | None = None) -> list[Posting]:
+    """Poll one board. ``known`` maps external ids to descriptions already stored, to reuse."""
     try:
-        return await POLLERS[board.ats](client, board)
+        postings = await POLLERS[board.ats](client, board)
+        await fill_descriptions(client, board, postings, known or {})
+        return postings
     except (BoardGone, PollError):
         raise
     except ValueError as e:  # bad JSON

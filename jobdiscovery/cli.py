@@ -29,7 +29,7 @@ from .boards import board_from_url, boards_from_urls
 from .cc_index import discover_boards
 from .http import PoliteClient
 from .models import ATS_NAMES, SINGLE_EMPLOYER
-from .pollers import BoardGone, PollError, poll_board
+from .pollers import DETAILS, BoardGone, PollError, poll_board
 from .store import LockHeld, Store, now_utc
 
 log = logging.getLogger("jobdiscovery")
@@ -190,7 +190,8 @@ async def cmd_poll(args, store: Store) -> int:
                         return  # the hiring system is turning us away this run; stays due
                     totals["attempted"] += 1
                     try:
-                        postings = await poll_board(client, board)
+                        known = store.known_descriptions(board.key) if board.ats in DETAILS else {}
+                        postings = await poll_board(client, board, known)
                     except BoardGone:
                         store.mark_gone(board)
                         totals["gone"] += 1

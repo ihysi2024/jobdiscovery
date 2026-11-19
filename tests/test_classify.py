@@ -340,3 +340,11 @@ def test_redo_relabels_older_versions(polled_db, monkeypatch, capsys):
     assert "Processed 50 of 50" in capsys.readouterr().out
     cli.main(["--db", polled_db, "process", "--redo"])                  # plus the 2 old labels
     assert "Processed 2 of 2" in capsys.readouterr().out
+
+
+def test_summary_drops_null_padding():
+    from jobdiscovery.classify import clean_summary
+    assert clean_summary("Submit your info for future roles. null, null, null, null") == "Submit your info for future roles."
+    assert clean_summary("Engineer builds things, null") == "Engineer builds things."
+    assert clean_summary("A null hypothesis tester runs experiments.") == "A null hypothesis tester runs experiments."
+    assert clean_summary("null null null") is None

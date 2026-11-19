@@ -314,6 +314,12 @@ class Store:
                 "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING", rows)
         return self.db.scalar("SELECT COUNT(*) FROM boards") - before
 
+    def known_descriptions(self, board_key: str) -> dict[str, str]:
+        """Descriptions already stored for a board's open NYC jobs, by external id (fetched from detail pages)."""
+        rows = self.db.all("SELECT external_id, description_text FROM postings WHERE board_key = ? AND closed_at IS NULL "
+                           "AND is_nyc = 1 AND description_text IS NOT NULL AND description_text <> ''", (board_key,))
+        return {r["external_id"]: r["description_text"] for r in rows}
+
     def set_company_names(self, names: dict[str, str]) -> None:
         """Name boards whose employer is known up front (a careers site, or a seed list)."""
         if names:
