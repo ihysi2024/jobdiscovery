@@ -40,12 +40,10 @@ jobs:
           from postings p join boards b on b.key = p.board_key join job_features jf on jf.posting_id = p.id
           where p.closed_at is null and p.is_nyc = 1 group by 1 order by 1"
 
-      - name: Best match timing, three runs (timings only)
+      - name: Best match timing, new connections, JIT on vs off (timings only)
         run: |
-          psql "$DATABASE_URL" -At <<'SQL' | grep -E "^Time"
-          \timing on
-          select count(*) from match_jobs(p_limit => 20);
-          select count(*) from match_jobs(p_limit => 20);
-          select count(*) from match_jobs(p_limit => 20);
-          select count(*) from job_facet_counts();
-          SQL
+          for jit in on off on off; do
+            echo "jit=$jit"
+            PGOPTIONS="-c jit=$jit" psql "$DATABASE_URL" -At -c "\timing on" -c "select count(*) from match_jobs(p_limit => 20)" -c "select count(*) from match_jobs(p_limit => 20)" | grep -E "^Time"
+          done
+          psql "$DATABASE_URL" -At -c "show jit" -c "show jit_above_cost"
