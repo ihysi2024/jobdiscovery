@@ -12,6 +12,10 @@ const list = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [
 export default async function Page({ searchParams }: { searchParams: Promise<Params> }) {
   const sp = await searchParams;
   const signedIn = Boolean(await currentUser());
+  // Start the small per-person lookups together instead of one after another.
+  const [savedIds, minFit] = signedIn
+    ? await Promise.all([ownSavedIds().catch(() => [] as string[]), ownMinFit().catch(() => null)])
+    : [[] as string[], null];
   const sort = sp.sort === "pay" ? "pay" : sp.sort === "new" ? "new" : signedIn ? "match" : "new";
   const query: JobQuery = {
     q: typeof sp.q === "string" ? sp.q.slice(0, 80) : "",
@@ -21,7 +25,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Par
     page: Math.max(0, (Number(sp.page) || 1) - 1),
     pageSize: 20,
     // Saved jobs live in My jobs, so the list only shows new ones.
-    excludeIds: signedIn ? await ownSavedIds().catch(() => []) : [],
+    excludeIds: savedIds,
   };
   let page: JobPage | null = null;
   let error: string | null = null;
@@ -32,6 +36,5 @@ export default async function Page({ searchParams }: { searchParams: Promise<Par
     // If ranking fails, still show the newest jobs.
     if (sort === "match") page = await data().searchJobs({ ...query, sort: "new" }).catch(() => null);
   }
-  const minFit = signedIn ? await ownMinFit().catch(() => null) : null;
   return <Jobs page={page} query={query} error={error} signedIn={signedIn} minFit={minFit} />;
 }

@@ -1,7 +1,7 @@
 // "Best match" for the signed-in person: the database ranks jobs with
 // match_jobs() (supabase/migrations/0006_matching.sql), acting as that person,
 // then we load those jobs' details in the ranked order.
-import { loadOwnProfile, supabaseServer } from "../supabase/server";
+import { currentUser, loadOwnProfile, supabaseServer } from "../supabase/server";
 import { whyBlurb } from "../why.mjs";
 import { AUTH_ENABLED } from "../supabase/env";
 import { facetCounts, searchJobs } from "./supabase";
@@ -25,8 +25,7 @@ interface Ranked { id: number; score: number; fit: number | null; reasons: strin
 export async function explainJob(id: string, job: { title: string; summary?: string; skills?: string[] }): Promise<{ why: string; fit: number | null } | null> {
   if (!AUTH_ENABLED || !/^\d+$/.test(id)) return null;
   const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth.user) return null;
+  if (!(await currentUser())) return null;
   const [profile, { data, error }] = await Promise.all([loadOwnProfile(), sb.rpc("match_jobs", { p_ids: [Number(id)], p_limit: 1 })]);
   if (error || !data || !(data as Ranked[]).length) return null;
   const r = (data as Ranked[])[0];
@@ -36,11 +35,13 @@ export async function explainJob(id: string, job: { title: string; summary?: str
 export async function matchJobs(q: JobQuery): Promise<JobPage | null> {
   if (!AUTH_ENABLED) return null;
   const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth.user) return null;
+  if (!(await currentUser())) return null;
   const size = Math.min(Math.max(q.pageSize ?? 20, 1), 50);
   const page = Math.max(q.page ?? 0, 0);
   const text = cleanQuery(q.q ?? "");
+  // Filter counts don't depend on the ranking, so they load at the same time.
+  const facetsP = facetCounts(q);
+  facetsP.catch(() => {});  // handled where it is awaited; avoids an unhandled rejection if ranking fails first
   const [profile, rpc] = await Promise.all([loadOwnProfile(), sb.rpc("match_jobs", {
     p_q: text || null,
     p_role: q.role?.length ? q.role : null,
@@ -58,7 +59,7 @@ export async function matchJobs(q: JobQuery): Promise<JobPage | null> {
   const ids = ranked.map((r) => String(r.id));
   const [details, facets] = await Promise.all([
     ids.length ? searchJobs({ ids, pageSize: ids.length }) : Promise.resolve({ jobs: [] as JobSummary[] }),
-    facetCounts(q),
+    facetsP,
   ]);
   const byId = new Map(details.jobs.map((j) => [j.id, j]));
   const jobs = ranked
