@@ -10,7 +10,12 @@ import { listTracked } from "@/lib/tracker";
 const C = { plum: "#7A3E6E", plumDeep: "#4A2141", ink: "#2A2028", muted: "#665D63", body: "#4D444B", line: "#EFE9D8", chip: "#F7F2E4", cream: "#FFFDF5", banana: "#FCEFA8", plumSoft: "#F3E6EF" };
 const serif = "'Instrument Serif', serif";
 const PRIORITY = { mission: "Mission", work: "The work itself", wlb: "Work-life balance", comp: "Compensation", status: "Status & prestige", culture: "Culture & people", growth: "Learning & growth", stability: "Stability", flex: "Flexibility" };
-const TRADE = { mission: "Some salary for a mission-driven industry", title: "A lower title for a bigger, more established company", commute: "A longer commute for higher pay", stability: "Stability for equity upside at an early-stage startup", office: "More days in the office for a more senior title", tenure: "Some salary for a company where people stay longer", promo: "Some salary for faster promotions", field: "Work further from my background for higher pay" };
+const TRADE = {
+  pay_mission: { pay: "Higher pay over a mission-driven field", mission: "A mission-driven field over higher pay" },
+  pay_flex: { pay: "Higher pay over remote or hybrid work", flex: "Remote or hybrid work over higher pay" },
+  level: { qualified: "More roles I clearly qualify for", stretch: "More stretch roles a level up" },
+  field: { close: "Stay close to my background", new: "Move into something new" },
+};
 const MODES = { office: "In the office", hybrid: "Hybrid", remote: "Remote, from NYC" };
 const AREAS = { manhattan: "Manhattan", brooklyn: "Brooklyn", queens: "Queens", bronx: "The Bronx", si: "Staten Island", any: "Anywhere in NYC" };
 const DAYS = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
@@ -123,10 +128,10 @@ export default function Profile() {
                   ? <Chips items={pref.priorities.map((p, i) => `${i + 1}. ${label(PRIORITY, p)}`)} />
                   : <Missing>{pref && pref.priorities === null ? "Skipped" : "Not answered"}</Missing>}
               </Row>
-              <Row name="Would trade">
-                {trades.filter(([, v]) => v === "Yes").length
-                  ? trades.filter(([, v]) => v === "Yes").map(([k]) => <div key={k}>{TRADE[k] || k}</div>)
-                  : <Missing>{pref && pref.tradeoffs === null ? "Skipped" : trades.length ? "No firm yeses" : "Not answered"}</Missing>}
+              <Row name="When you can't have both">
+                {trades.filter(([k, v]) => TRADE[k] && TRADE[k][v]).length
+                  ? trades.filter(([k, v]) => TRADE[k] && TRADE[k][v]).map(([k, v]) => <div key={k}>{TRADE[k][v]}</div>)
+                  : <Missing>{pref && pref.tradeoffs === null ? "Skipped" : trades.some(([k]) => TRADE[k]) ? "No strong preference" : "Not answered"}</Missing>}
               </Row>
               <Row name="Minimum match">
                 {pref && typeof pref.min_fit === "number" ? `${pref.min_fit}% or better` : <Missing>Any</Missing>}

@@ -92,21 +92,23 @@ class OnboardingPriorities extends React.Component {
         }
       };
     });
+    // Four either-or questions, each one something a posting or the profile can show.
+    // Saved as { id: optionId }; matching reads these ids (see migration 0015).
     const tList = [
-      ['mission', 'Some salary', 'a mission-driven industry', 'posted pay · company industry'],
-      ['title', 'A lower title', 'a bigger, more established company', 'job level · headcount and stage'],
-      ['commute', 'A longer commute', 'higher pay', 'office address · posted pay'],
-      ['stability', 'Stability', 'equity upside at an early-stage startup', 'funding stage · equity in posting'],
-      ['office', 'More days in the office', 'a more senior title', 'in-office days · job level'],
-      ['tenure', 'Some salary', 'a company where people stay longer', 'posted pay · average tenure'],
-      ['promo', 'Some salary', 'faster promotions', 'posted pay · average promotion cycle'],
-      ['field', 'Work further from my background', 'higher pay', 'your resume vs. the role · posted pay']
+      ['pay_mission', 'If you had to choose', [['pay', 'Higher pay'], ['mission', 'A mission-driven field']],
+        'Mission-driven: health care, education, climate, nonprofits, public service. We check: posted pay and the employer\'s industry.'],
+      ['pay_flex', 'If you had to choose', [['pay', 'Higher pay'], ['flex', 'Remote or hybrid work']],
+        'We check: posted pay and whether the job is remote, hybrid or in the office.'],
+      ['level', 'Show me more', [['qualified', 'Roles I clearly qualify for'], ['stretch', 'Stretch roles a level up']],
+        'We check: the job\'s level and years required against your experience.'],
+      ['field', 'I want to', [['close', 'Stay close to my background'], ['new', 'Move into something new']],
+        'We check: how closely the role matches your resume, versus the directions you picked.']
     ];
-    const tradeoffs = tList.map(([id, give, get, how]) => ({
-      give, get, how,
-      opts: ['Yes', 'Maybe', 'No'].map((label) => ({
-        label, sel: s.trade[id] === label, unsel: s.trade[id] !== label,
-        pick: () => this.setState({ trade: Object.assign({}, s.trade, { [id]: label }) })
+    const tradeoffs = tList.map(([id, lead, options, how]) => ({
+      lead, how, id,
+      opts: options.concat([['either', 'Either is fine']]).map(([value, label]) => ({
+        label, sel: s.trade[id] === value, unsel: s.trade[id] !== value,
+        pick: () => this.setState({ trade: Object.assign({}, s.trade, { [id]: value }) })
       }))
     }));
     const chips = (key, list) => list.map(([id, label]) => {
@@ -232,31 +234,27 @@ class OnboardingPriorities extends React.Component {
 {" "}
 <div style={{ display: "flex", flexDirection: "column", gap: "20px", opacity: vm.st.op, pointerEvents: vm.st.pe }} aria-hidden={vm.st.skipped}>
 <h2 style={{ margin: "0", fontFamily: "'Instrument Serif', serif", fontWeight: "400", fontSize: "44px", lineHeight: "1.05" }}>
-{"I'd trade…"}
+{"When you can't have both"}
 </h2>
 {" "}
 <p style={{ margin: "0", fontSize: "15px", lineHeight: "1.5", color: "#4D444B" }}>
-{"Only tradeoffs we can actually check against a job posting, company data or your background."}
+{"Four quick choices. Each one changes how we rank jobs for you, and each is something we can check in a posting or your resume."}
 </p>
 {" "}
 <div style={{ display: "flex", flexDirection: "column" }}>
 {(vm.tradeoffs || []).map((t, t$i1) => (<React.Fragment key={t$i1}>
 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "16px", padding: "16px 0", borderBottom: "1px solid #F3EFE2" }}>
-<div style={{ flex: "1 1 280px", display: "flex", flexDirection: "column", gap: "4px" }}>
-<div style={{ fontSize: "17px" }}>
-{t.give}{" "}
-<span style={{ color: "#665D63" }}>
-{"for"}
-</span>
-{" "}{t.get}
+<div style={{ flex: "1 1 100%", display: "flex", flexDirection: "column", gap: "4px" }}>
+<div style={{ fontSize: "17px", fontWeight: "500" }}>
+{t.lead}{"…"}
 </div>
 {" "}
-<div style={{ fontSize: "13px", color: "#665D63" }}>
-{"We check: "}{t.how}
+<div style={{ fontSize: "13px", color: "#665D63", lineHeight: "1.45" }}>
+{t.how}
 </div>
 </div>
 {" "}
-<div style={{ display: "flex", gap: "6px" }} role="group" aria-label={`${t.give} for ${t.get}`}>
+<div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }} role="group" aria-label={t.opts.map((o) => o.label).join(" or ")}>
 {(t.opts || []).map((o, o$i2) => (<React.Fragment key={o$i2}>
 {(o.sel) ? (<>
 <button type="button" onClick={o.pick} aria-pressed="true" style={{ height: "44px", minWidth: "72px", padding: "0 14px", borderRadius: "22px", border: "1.5px solid #D9C24E", background: "#FCEFA8", color: "#4A3B00", font: "500 14px Inter, sans-serif", cursor: "pointer" }}>

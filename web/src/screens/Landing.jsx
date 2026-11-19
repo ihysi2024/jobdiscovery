@@ -57,7 +57,7 @@ const STEPS = [
   {
     n: "1",
     title: "Tell us what you're after",
-    text: "Start from your resume, then pick what matters most and the trade-offs you'd make: more pay for a longer commute, a smaller team for more ownership.",
+    text: "Start from your resume, then pick what matters most and what you'd choose when you can't have both, like higher pay or remote work.",
   },
   {
     n: "2",
