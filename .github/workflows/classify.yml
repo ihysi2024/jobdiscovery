@@ -44,6 +44,10 @@ jobs:
       shards: ${{ steps.p.outputs.shards }}
       total: ${{ steps.p.outputs.total }}
     steps:
+      - name: Show the poll's new and closed jobs on the site now
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: psql "$DATABASE_URL" -Atc "select refresh_jobs_search()" -c "select count(*) || ' jobs listed' from jobs_search" || true
       - id: p
         env:
           SHARDS: ${{ inputs.shards }}
@@ -152,8 +156,11 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install ".[postgres]"
-      - name: Posting signals for new or changed jobs
-        run: psql "$DATABASE_URL" -Atc "select refresh_job_signals() || ' postings got growth, stability and work-life signals'" || true
+      - name: Posting signals, requirements and the stored job list
+        run: |
+          psql "$DATABASE_URL" -Atc "select refresh_job_signals() || ' postings got growth, stability and work-life signals'" \
+            -c "select refresh_job_reqs() || ' postings got their requirement lists'" \
+            -c "select refresh_jobs_search()" -c "select count(*) || ' jobs listed' from jobs_search" || true
       - name: Summary
         run: |
           out=$(jobdiscovery report --samples 8 || true)

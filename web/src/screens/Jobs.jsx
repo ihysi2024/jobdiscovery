@@ -8,6 +8,7 @@ import AppHeader from "@/components/AppHeader";
 import { likeJob, trackedPostingIds, unlikeJob } from "@/lib/tracker";
 import { ensureProfileEmbedding } from "@/lib/profile";
 import { ensureGoalEmbedding } from "@/lib/goals";
+import { UpdatingNote } from "@/components/PageLoading";
 import { savePreferences } from "@/lib/answers";
 
 const C = { plum: "#7A3E6E", ink: "#2A2028", muted: "#665D63", soft: "#7A7078", line: "#EFE9D8", chip: "#F7F2E4", plumSoft: "#F3E6EF" };
@@ -219,6 +220,7 @@ export default function Jobs({ page, query, error, signedIn = false, minFit = /*
         </aside>
 
         <main style={{ flex: "999 1 600px", minWidth: 0, display: "flex", flexDirection: "column" }} aria-busy={pending}>
+          <UpdatingNote show={pending} />
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "12px", paddingBottom: "16px", borderBottom: `1px solid ${C.line}` }}>
             <div>
               <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 600, letterSpacing: "-0.2px" }}>
