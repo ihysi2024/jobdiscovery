@@ -1,0 +1,31 @@
+name: Data quality
+
+# Manual: counts of open NYC postings with empty or junk descriptions, by hiring
+# system, plus a few public example ids. Job postings are public data; nothing
+# personal is read.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Descriptions
+        run: |
+          psql "$DATABASE_URL" -c "
+          select b.ats, count(*) as open_nyc,
+                 count(*) filter (where coalesce(p.description_text, '') = '') as empty,
+                 count(*) filter (where p.description_text ~* '\mnull\M') as has_null_word,
+                 count(*) filter (where p.description_text ~* '(\mnull\M\W*){2,}') as null_null,
+                 count(*) filter (where jf.summary ~* '\mnull\M') as summary_null
+          from postings p join boards b on b.key = p.board_key left join job_features jf on jf.posting_id = p.id
+          where p.closed_at is null and p.is_nyc = 1 group by 1 order by 2 desc"
+          psql "$DATABASE_URL" -c "
+          select p.id, b.ats, left(p.title, 40) as title,
+                 left(regexp_replace(substring(p.description_text from '(?i)(.{0,60}\mnull\M.{0,60})'), '\s+', ' ', 'g'), 130) as around
+          from postings p join boards b on b.key = p.board_key
+          where p.closed_at is null and p.is_nyc = 1 and p.description_text ~* '(\mnull\M\W*){2,}'
+          order by p.id desc limit 12"
