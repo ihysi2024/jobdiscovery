@@ -40,30 +40,16 @@ jobs:
           from postings p join boards b on b.key = p.board_key join job_features jf on jf.posting_id = p.id
           where p.closed_at is null and p.is_nyc = 1 group by 1 order by 1"
 
-      - name: Where Best match spends its time (anonymous call; plan timings only)
+      - name: Database speed (timings only)
         run: |
-          psql "$DATABASE_URL" -At > plan.txt 2>&1 <<'SQL' || true
-          load 'auto_explain';
-          set auto_explain.log_min_duration = 0;
-          set auto_explain.log_analyze = on;
-          set auto_explain.log_buffers = on;
-          set auto_explain.log_nested_statements = on;
-          set auto_explain.log_level = notice;
+          psql "$DATABASE_URL" -At <<'SQL' | grep -E "^Time|^[0-9]"
+          \timing on
+          select count(*) from jobs_search;
+          select count(*) from jobs_search where title ilike '%engineer%';
+          select sum(md5(i::text)::uuid::text::int8) is null from generate_series(1, 200000) i where false;
+          select count(*) from (select md5(i::text) from generate_series(1, 300000) i) x;
+          select count(*) from (select percent_rank() over (order by salary_max_annual) from jobs_search) x;
+          select avg(1 - (jf.embedding <=> (select embedding from job_features limit 1))) from job_features jf;
           select count(*) from match_jobs(p_limit => 20);
-          show shared_buffers; show work_mem; select version();
+          select count(*) from match_jobs(p_limit => 20);
           SQL
-          head -3 plan.txt
-          python3 - <<'PY'
-          import re
-          lines = open("plan.txt").read().splitlines()
-          qp = [i for i, l in enumerate(lines) if "Query Parameters" in l]
-          start = qp[-1] if qp else 0
-          for l in lines[start:]:
-              m = re.search(r"actual time=([\d.]+)\.\.([\d.]+) rows=(\d+) loops=(\d+)", l)
-              if m and float(m.group(2)) * int(m.group(4)) > 100 and "CTE Scan" not in l:
-                  print(f"{float(m.group(1)):7.0f}-{float(m.group(2))*int(m.group(4)):6.0f} rows={m.group(3):>6} " + re.sub(r"\(cost=[^)]*\)", "", l.strip())[:110])
-              elif "Buffers:" in l and "read=" in l:
-                  r = re.search(r"read=(\d+)", l)
-                  if r and int(r.group(1)) > 2000: print("        " + l.strip()[:110])
-          for l in lines[-12:]: print(l[:120])
-          PY
