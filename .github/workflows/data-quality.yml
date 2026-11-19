@@ -40,12 +40,12 @@ jobs:
           from postings p join boards b on b.key = p.board_key join job_features jf on jf.posting_id = p.id
           where p.closed_at is null and p.is_nyc = 1 group by 1 order by 1"
 
-      - name: Database size and warm-up (sizes and timings only)
+      - name: Best match timing, three runs (timings only)
         run: |
-          psql "$DATABASE_URL" -At <<'SQL' | grep -vE "^$"
+          psql "$DATABASE_URL" -At <<'SQL' | grep -E "^Time"
           \timing on
-          select relname || ' ' || pg_size_pretty(pg_total_relation_size(c.oid)) from pg_class c join pg_namespace n on n.oid = c.relnamespace
-            where n.nspname = 'public' and c.relkind in ('r', 'm') order by pg_total_relation_size(c.oid) desc limit 10;
-          select count(*) filter (where closed_at is null) || ' open, ' || count(*) filter (where closed_at is not null) || ' closed postings' from postings;
-          select name || ' available' from pg_available_extensions where name = 'pg_prewarm';
+          select count(*) from match_jobs(p_limit => 20);
+          select count(*) from match_jobs(p_limit => 20);
+          select count(*) from match_jobs(p_limit => 20);
+          select count(*) from job_facet_counts();
           SQL
