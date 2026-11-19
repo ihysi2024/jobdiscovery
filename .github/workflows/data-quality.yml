@@ -42,14 +42,16 @@ jobs:
 
       - name: Database speed (timings only)
         run: |
-          psql "$DATABASE_URL" -At <<'SQL' | grep -E "^Time|^[0-9]"
+          psql "$DATABASE_URL" -At <<'SQL' | grep -E "^Time|^[0-9]|^[a-z]"
           \timing on
-          select count(*) from jobs_search;
-          select count(*) from jobs_search where title ilike '%engineer%';
-          select sum(md5(i::text)::uuid::text::int8) is null from generate_series(1, 200000) i where false;
-          select count(*) from (select md5(i::text) from generate_series(1, 300000) i) x;
-          select count(*) from (select percent_rank() over (order by salary_max_annual) from jobs_search) x;
+          select avg(pg_column_size(embedding)), avg(pg_column_size(jf.*)) from job_features jf where embedding is not null;
           select avg(1 - (jf.embedding <=> (select embedding from job_features limit 1))) from job_features jf;
-          select count(*) from match_jobs(p_limit => 20);
-          select count(*) from match_jobs(p_limit => 20);
+          create temp table v (posting_id bigint, embedding vector(384));
+          alter table v alter column embedding set storage plain;
+          insert into v select posting_id, embedding from job_features where embedding is not null;
+          select avg(1 - (v.embedding <=> (select embedding from v limit 1))) from v;
+          select count(*) from jobs_search where title ilike '%engineer%';
+          select count(*) from jobs_search where title ilike '%engineer%';
+          select count(*) from jobs_search where summary ilike '%engineer%';
+          select datcollate, datctype from pg_database where datname = current_database();
           SQL
