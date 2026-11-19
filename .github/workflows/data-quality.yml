@@ -40,10 +40,35 @@ jobs:
           from postings p join boards b on b.key = p.board_key join job_features jf on jf.posting_id = p.id
           where p.closed_at is null and p.is_nyc = 1 group by 1 order by 1"
 
-      - name: Best match timing, new connections, JIT on vs off (timings only)
+      - name: Best match timing for a signed-in profile (timings only; no ids printed)
         run: |
-          for jit in on off on off; do
-            echo "jit=$jit"
-            PGOPTIONS="-c jit=$jit" psql "$DATABASE_URL" -At -c "\timing on" -c "select count(*) from match_jobs(p_limit => 20)" -c "select count(*) from match_jobs(p_limit => 20)" | grep -E "^Time"
-          done
-          psql "$DATABASE_URL" -At -c "show jit" -c "show jit_above_cost"
+          psql "$DATABASE_URL" -At <<'SQL' | grep -E "^Time|^role"
+          select 'role timeout ' || coalesce((select string_agg(c, ',') from pg_roles r, unnest(r.rolconfig) c where r.rolname = 'authenticated'), 'none');
+          select set_config('request.jwt.claim.sub', (select user_id::text from profiles where embedding is not null order by updated_at desc limit 1), false) is not null;
+          \timing on
+          select count(*) from match_jobs(p_limit => 20);
+          select count(*) from match_jobs(p_limit => 20);
+          select count(*) from match_jobs(p_limit => 20, p_offset => 20);
+          select count(*) from match_jobs(p_ids => array[1::bigint]);
+          SQL
+          psql "$DATABASE_URL" -At > plan.txt 2>&1 <<'SQL' || true
+          load 'auto_explain';
+          set auto_explain.log_min_duration = 0;
+          set auto_explain.log_analyze = on;
+          set auto_explain.log_timing = on;
+          set auto_explain.log_nested_statements = on;
+          set auto_explain.log_level = notice;
+          select set_config('request.jwt.claim.sub', (select user_id::text from profiles where embedding is not null order by updated_at desc limit 1), false) is not null;
+          select count(*) from match_jobs(p_limit => 20);
+          SQL
+          python3 - <<'PY'
+          import re
+          lines = open("plan.txt").read().splitlines()
+          qp = [i for i, l in enumerate(lines) if "Query Parameters" in l]
+          start = qp[-1] if qp else 0
+          for l in lines[start:]:
+              if l.strip().startswith("CTE ") or "InitPlan" in l: print("   " + l.strip()[:60]); continue
+              m = re.search(r"actual time=([\d.]+)\.\.([\d.]+) rows=(\d+) loops=(\d+)", l)
+              if m and float(m.group(2)) * int(m.group(4)) > 150 and "CTE Scan" not in l:
+                  print(f"{float(m.group(1)):7.0f}-{float(m.group(2))*int(m.group(4)):6.0f} rows={m.group(3):>6} " + re.sub(r"\(cost=[^)]*\)", "", l.strip())[:100])
+          PY
