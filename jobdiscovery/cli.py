@@ -370,8 +370,9 @@ def _error_kinds(store: Store, top: int = 12):
     from collections import Counter
     c = Counter()
     for r in store.db.all("SELECT ats, last_error FROM boards WHERE last_status='error'"):
-        kind = re.sub(r"https?://\S+", "<url>", r["last_error"] or "unknown")
-        kind = re.sub(r"\d{2,}", "N", kind)[:90]
+        kind = re.sub(r"^[a-z]+:\S*?: ", "", r["last_error"] or "unknown")  # drop the "ats:token: " prefix
+        kind = re.sub(r"https?://\S+", "<url>", kind)
+        kind = re.sub(r"\d{4,}", "N", kind)[:90]  # keep HTTP status codes
         c[(r["ats"], kind)] += 1
     return c.most_common(top)
 

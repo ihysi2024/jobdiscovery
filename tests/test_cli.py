@@ -190,7 +190,7 @@ def test_report_groups_board_errors(tmp_path, capsys):
     assert cli.main(["--db", db, "report"]) == 0
     out = capsys.readouterr().out
     assert "Boards failing to load" in out
-    assert "     3  workday         HTTP N for <url>" in out
+    assert "     3  workday         HTTP 422 for <url>" in out
 
 
 def test_poll_skips_a_hiring_system_that_keeps_throttling(tmp_path, capsys, monkeypatch):
@@ -215,3 +215,15 @@ def test_add_from_seed_file_names_employers(tmp_path, capsys):
     from jobdiscovery.store import Store
     names = dict(Store(db).db.execute("SELECT key, company_name FROM boards").fetchall())
     assert names == {"amazon:amazon": "Amazon", "oracle:jpmc.fa.oraclecloud.com|CX_1001": "JPMorgan Chase"}
+
+
+def test_error_kinds_group_across_boards(tmp_path):
+    from jobdiscovery.models import Board
+    from jobdiscovery.store import Store
+    st = Store(str(tmp_path / "j.sqlite"))
+    bs = [Board("workday", "a|wd1|X"), Board("workday", "b|wd5|Y"), Board("lever", "c")]
+    st.add_boards(bs, "test")
+    st.mark_error(bs[0], "workday:a|wd1|X: HTTP 429")
+    st.mark_error(bs[1], "workday:b|wd5|Y: HTTP 429")
+    st.mark_error(bs[2], "lever:c: HTTP 503")
+    assert cli._error_kinds(st) == [(("workday", "HTTP 429"), 2), (("lever", "HTTP 503"), 1)]
