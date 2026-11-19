@@ -72,3 +72,18 @@ export async function matchJobs(q: JobQuery): Promise<JobPage | null> {
     .filter((j): j is NonNullable<typeof j> => j !== null);
   return { jobs, total: ranked.length ? Number(ranked[0].total) : 0, facets };
 }
+
+/**
+ * Kinds of work to suggest in onboarding's market step, from the signed-in person's
+ * background and long-term goals: the role types of their best-matching jobs
+ * (suggested_lanes() in supabase/migrations/0024_market_from_background.sql).
+ * Empty when signed out or before a resume is in.
+ */
+export async function suggestedLanes(limit = 6): Promise<string[]> {
+  if (!AUTH_ENABLED) return [];
+  if (!(await currentUser())) return [];
+  const sb = await supabaseServer();
+  const { data, error } = await sb.rpc("suggested_lanes", { p_limit: limit });
+  if (error) throw new Error("Couldn't suggest directions: " + error.message);
+  return ((data ?? []) as { role_family: string }[]).map((r) => r.role_family);
+}

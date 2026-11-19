@@ -1,7 +1,8 @@
 "use client";
 // Onboarding step 5: what's hiring in New York, from the jobs database, and which
 // directions ("lanes") the person wants to see first. Nothing is pre-selected; the
-// suggested directions are the role types of jobs they liked in quick picks.
+// suggested directions come from their background and long-term goals (the role types
+// of their best-matching jobs), plus the role types of jobs they liked in quick picks.
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -43,7 +44,7 @@ class OnboardingMarket extends React.Component {
       this.loaded = !!user;
       const saved = (row && row.lanes) || [];
       if (!saved.length) return;
-      const liked = this.props.likedLanes || [];
+      const liked = this.props.suggestedLanes || [];
       const rank = {};
       saved.filter((l) => liked.includes(l)).slice(0, 3).forEach((l, i) => { rank[l] = RANKS[i]; });
       liked.forEach((l) => { if (!saved.includes(l)) rank[l] = "Skip"; });
@@ -65,7 +66,7 @@ class OnboardingMarket extends React.Component {
 
   lanes() {
     const { rank, added } = this.state;
-    const liked = this.props.likedLanes || [];
+    const liked = this.props.suggestedLanes || [];
     const ranked = liked.filter((l) => rank[l] && rank[l] !== "Skip").sort((a, b) => RANKS.indexOf(rank[a]) - RANKS.indexOf(rank[b]));
     // Only what they ranked or added: a role type they liked once isn't a direction until they say so.
     return [...ranked, ...added.filter((l) => !liked.includes(l))];
@@ -100,7 +101,8 @@ class OnboardingMarket extends React.Component {
 
   render() {
     const rows = this.props.rows || [];
-    const liked = this.props.likedLanes || [];
+    const liked = this.props.suggestedLanes || [];
+    const likedPicks = this.props.likedLanes || [];
     const { rank, added, ind, saving, saveError } = this.state;
     const roleRow = (role) => rows.find((r) => r.role === role && r.allIndustries && !r.allRoles);
     const topIndustries = (role) => rows.filter((r) => r.role === role && !r.allIndustries).sort((a, b) => b.openings - a.openings).slice(0, 3).map((r) => r.industry);
@@ -133,12 +135,12 @@ class OnboardingMarket extends React.Component {
 
           <section style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <div style={{ fontSize: "13px", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted }}>
-              {liked.length ? "From the roles you liked" : "Your directions"}
+              {liked.length ? "Suggested for you" : "Your directions"}
             </div>
             {liked.length ? (
               <>
                 <p style={{ margin: 0, fontSize: "16px", lineHeight: 1.55, color: C.body, maxWidth: "760px" }}>
-                  These are the kinds of work behind the roles you liked. Rank the ones you want as directions; anything you don't rank is left out.
+                  Based on your background, your long-term goals{likedPicks.length ? " and the roles you liked" : ""}. Rank the ones you want as directions; anything you don't rank is left out.
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "20px" }}>
                   {liked.map((lane) => {
@@ -165,7 +167,7 @@ class OnboardingMarket extends React.Component {
               </>
             ) : (
               <p style={{ margin: 0, padding: "20px 24px", borderRadius: "20px", background: "#F3E6EF", color: "#2D242B", fontSize: "16px", lineHeight: 1.6, maxWidth: "760px" }}>
-                You didn't like any roles in the last step, which is fine. Add the kinds of work you're interested in from the list below.
+                We'll suggest directions once your resume is in. For now, add the kinds of work you're interested in from the list below.
               </p>
             )}
           </section>
@@ -221,7 +223,7 @@ class OnboardingMarket extends React.Component {
                             <td style={{ padding: "12px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{num(r.openings)}</td>
                             <td style={{ padding: "12px 8px", color: r.withPay >= MIN_PAY_SAMPLE ? C.ink : C.muted }}>{payText(r)}</td>
                             <td style={{ padding: "8px 0 8px 8px", textAlign: "right" }}>
-                              {fromPicks ? <span style={{ fontSize: "13px", color: C.muted }}>From your picks</span> : (
+                              {fromPicks ? <span style={{ fontSize: "13px", color: C.muted }}>Suggested above</span> : (
                                 <button type="button" aria-pressed={on} onClick={() => this.setState({ added: on ? added.filter((x) => x !== r.role) : added.concat(r.role) })} style={{
                                   height: "36px", padding: "0 14px", borderRadius: "18px", cursor: "pointer", font: "500 13px Inter, sans-serif",
                                   border: on ? `1.5px solid ${C.bananaLine}` : `1.5px solid ${C.line}`, background: on ? C.banana : "#FFFFFF", color: on ? C.bananaInk : C.ink,
