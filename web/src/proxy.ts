@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_ENABLED, SUPABASE_KEY, SUPABASE_URL } from "./lib/supabase/env";
 
 // Pages anyone can open. Everything else needs a signed-in user.
-const PUBLIC = [/^\/$/, /^\/auth\//, /^\/privacy$/, /^\/terms$/];
+const PUBLIC = [/^\/$/, /^\/auth\//, /^\/privacy$/, /^\/terms$/, /^\/api\/cron\//]; // cron routes check CRON_SECRET themselves
 
 export async function proxy(request: NextRequest) {
   if (!AUTH_ENABLED) return NextResponse.next();
