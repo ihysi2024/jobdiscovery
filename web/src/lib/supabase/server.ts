@@ -43,14 +43,22 @@ export async function currentUser(): Promise<AppUser | null> {
 }
 
 /** The signed-in person's saved profile (resume details), or null. */
-export async function loadOwnProfile(): Promise<{ headline: string; skills: string[]; exp: { role: string }[] } | null> {
+export interface OwnProfile {
+  headline: string; skills: string[]; exp: { role: string }[];
+  future: { dreams?: string[] | null; own?: string | null; horizons?: Record<string, string> | null } | null;
+}
+
+export async function loadOwnProfile(): Promise<OwnProfile | null> {
   if (!AUTH_ENABLED) return null;
   const supabase = await supabaseServer();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) return null;
-  const { data } = await supabase.from("profiles").select("headline, skills, experience").eq("user_id", auth.user.id).maybeSingle();
+  const [{ data }, { data: pref }] = await Promise.all([
+    supabase.from("profiles").select("headline, skills, experience").eq("user_id", auth.user.id).maybeSingle(),
+    supabase.from("preferences").select("future").eq("user_id", auth.user.id).maybeSingle(),
+  ]);
   if (!data) return null;
-  return { headline: data.headline || "", skills: data.skills || [], exp: data.experience || [] };
+  return { headline: data.headline || "", skills: data.skills || [], exp: data.experience || [], future: (pref && pref.future) || null };
 }
 
 /** Ids of jobs the signed-in person liked in quick picks. */

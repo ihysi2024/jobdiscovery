@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { likeJob, trackedPostingIds, unlikeJob } from "@/lib/tracker";
 import { ensureProfileEmbedding } from "@/lib/profile";
+import { ensureGoalEmbedding } from "@/lib/goals";
 import { savePreferences } from "@/lib/answers";
 
 const C = { plum: "#7A3E6E", ink: "#2A2028", muted: "#665D63", soft: "#7A7078", line: "#EFE9D8", chip: "#F7F2E4", plumSoft: "#F3E6EF" };
@@ -127,7 +128,12 @@ export default function Jobs({ page, query, error, signedIn = false, minFit = /*
   React.useEffect(() => {
     // A resume saved before matching existed gets its fingerprint now; then re-rank.
     if (!signedIn) return;
-    ensureProfileEmbedding().then((made) => { if (made && query.sort === "match") router.refresh(); }).catch(() => {});
+    // Fingerprints for the resume and the long-term goals, made here if missing or out of date.
+    (async () => {
+      const a = await ensureProfileEmbedding().catch(() => false);
+      const b = await ensureGoalEmbedding().catch(() => false);
+      if ((a || b) && query.sort === "match") router.refresh();
+    })();
   }, [signedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = (patch) => {

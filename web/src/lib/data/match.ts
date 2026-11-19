@@ -11,8 +11,9 @@ const cleanQuery = (q: string) => q.replace(/[,()*%\\:."']/g, " ").replace(/\s+/
 
 /** Turn ranking reasons into a one-line summary: the best two reasons, then the biggest caveat. */
 export function whyLine(reasons: string[]): string {
-  const isCaveat = (r: string) => r.startsWith("A stretch") || r.startsWith("Likely out of reach") || r.startsWith("Missing requirements");
-  const rank = (r: string) => (r.startsWith("Meets") ? 0 : r.startsWith("Close to") ? 1 : r.startsWith("Like roles") ? 2 : r.startsWith("In your direction") ? 3 : r === "Right level for your experience" ? 6 : 4);
+  const isCaveat = (r: string) => r.startsWith("A stretch") || r.startsWith("Likely out of reach") || r.startsWith("Missing requirements")
+    || r.startsWith("Heads up") || r.startsWith("Fits your background, but");
+  const rank = (r: string) => (r.startsWith("A step toward") ? 0 : r.startsWith("Meets") ? 0 : r.startsWith("Close to") ? 1 : r.startsWith("Like roles") ? 2 : r.startsWith("In your direction") ? 3 : r === "Right level for your experience" ? 6 : 4);
   const good = reasons.filter((r) => !isCaveat(r)).sort((x, y) => rank(x) - rank(y));
   const caveats = reasons.filter(isCaveat).sort((x, y) => (x.startsWith("Likely") ? 0 : x.startsWith("Missing") ? 1 : 2) - (y.startsWith("Likely") ? 0 : y.startsWith("Missing") ? 1 : 2));
   return [...good.slice(0, caveats.length ? 2 : 3), ...caveats.slice(0, 1)].join(" · ");

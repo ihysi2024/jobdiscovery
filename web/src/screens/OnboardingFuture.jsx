@@ -3,6 +3,7 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { loadPreferences, savePreferences } from "@/lib/answers";
+import { ensureGoalEmbedding } from "@/lib/goals";
 
 // Where people see themselves, in words that fit any field.
 const HORIZONS = [
@@ -44,6 +45,7 @@ class OnboardingFuture extends React.Component {
     try {
       clearTimeout(this.saveTimer); this.saveTimer = null;
       await this.persist();
+      ensureGoalEmbedding().catch(() => {});  // in the background; Jobs retries if this doesn't finish
       this.props.router.push('/onboarding/picks');
     } catch (e) {
       this.setState({ saving: false, saveError: e.message });

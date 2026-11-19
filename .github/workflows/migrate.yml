@@ -52,4 +52,6 @@ jobs:
             -c "select (select count(*) from profiles where embedding is not null) as profiles_with_embedding" \
             -c "\\timing on" -c "select count(*) as ranked_rows, max(total) as total, round(max(score)::numeric, 3) as top_score from match_jobs(p_limit => 50)" \
             -c "select facet, count(*) as options, sum(n) as jobs from job_facet_counts() group by 1 order by 1" \
-            -c "select facet, count(*) as options, sum(n) as jobs from job_facet_counts(p_mode => array['hybrid']) group by 1 order by 1"
+            -c "select facet, count(*) as options, sum(n) as jobs from job_facet_counts(p_mode => array['hybrid']) group by 1 order by 1" \
+            -c "select count(*) as with_signals, count(*) filter (where growth) as growth, count(*) filter (where early_program) as programs, count(*) filter (where stability = 1) as stable, count(*) filter (where stability = -1) as unstable, count(*) filter (where wlb = 1) as good_wlb, count(*) filter (where wlb = -1) as long_hours, count(*) filter (where manages) as leads, count(*) filter (where ownership) as owns, count(*) filter (where large_employer) as large from job_signals" \
+            -c "select count(*) filter (where goal_embedding is not null) as with_goals from preferences"

@@ -49,3 +49,24 @@ test("requirements: all met, most met, and missing", () => {
   assert.match(whyBlurb({ ...base, req_total: 6, req_met: 1, missing: ["Go", "Terraform", "Rust"], degree_ok: 0, degree_required: "masters" }, job, ira),
     /It asks for Go, Terraform and Rust, which aren't on your profile\./);
 });
+
+test("long view: stepping stone, big jump, lines up, pulls away", async () => {
+  const { goalLabel } = await import("../src/lib/why.mjs");
+  const job = { title: "x", summary: "", skills: [] };
+  const p = { skills: [], exp: [], future: { dreams: ["research"], horizons: { y3: "Leading projects or people" } } };
+  const g = { ...base, has_goals: true };
+  assert.equal(goalLabel(p.future), "research");
+  assert.equal(goalLabel({ horizons: { y1: "Still exploring", y3: "The go-to expert on something" } }), "becoming the go-to expert in your area");
+  assert.match(whyBlurb({ ...g, step: 0.7, q: 1 }, job, p), /Long term, it's a step toward research: closer to where you want to go than your current work, and within reach\./);
+  assert.match(whyBlurb({ ...g, step: 0.7, q: 0.25 }, job, p), /It points toward research, but it's a big jump/);
+  assert.match(whyBlurb({ ...g, step: 0, goal: 0.9 }, job, p), /It lines up with what you want long-term: research\./);
+  assert.match(whyBlurb({ ...g, step: 0, goal: 0.3, progress: -0.08, bg: 0.9 }, job, p), /It fits your background, but it wouldn't move you toward research\./);
+  assert.doesNotMatch(whyBlurb({ ...base, step: 0.9 }, job, p), /step toward/);   // no goals saved
+});
+
+test("posting signals they care about, and heads-ups", () => {
+  const job = { title: "x", summary: "", skills: [] };
+  const t = whyBlurb({ ...base, wants_pay: false, wants_flex: false, modes: [], wants_growth: true, growth: true, wants_stability: true, stability: -1, wants_wlb: true, wlb: -1 }, job, null);
+  assert.match(t, /It offers mentorship or training\./);
+  assert.match(t, /Heads up: the posting mentions on-call or long hours and it's contract or early-stage\./);
+});
