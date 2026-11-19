@@ -40,18 +40,12 @@ jobs:
           from postings p join boards b on b.key = p.board_key join job_features jf on jf.posting_id = p.id
           where p.closed_at is null and p.is_nyc = 1 group by 1 order by 1"
 
-      - name: Database speed (timings only)
+      - name: Database size and warm-up (sizes and timings only)
         run: |
-          psql "$DATABASE_URL" -At <<'SQL' | grep -E "^Time|^[0-9]|^[a-z]"
+          psql "$DATABASE_URL" -At <<'SQL' | grep -vE "^$"
           \timing on
-          select avg(pg_column_size(embedding)), avg(pg_column_size(jf.*)) from job_features jf where embedding is not null;
-          select avg(1 - (jf.embedding <=> (select embedding from job_features limit 1))) from job_features jf;
-          create temp table v (posting_id bigint, embedding vector(384));
-          alter table v alter column embedding set storage plain;
-          insert into v select posting_id, embedding from job_features where embedding is not null;
-          select avg(1 - (v.embedding <=> (select embedding from v limit 1))) from v;
-          select count(*) from jobs_search where title ilike '%engineer%';
-          select count(*) from jobs_search where title ilike '%engineer%';
-          select count(*) from jobs_search where summary ilike '%engineer%';
-          select datcollate, datctype from pg_database where datname = current_database();
+          select relname || ' ' || pg_size_pretty(pg_total_relation_size(c.oid)) from pg_class c join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname = 'public' and c.relkind in ('r', 'm') order by pg_total_relation_size(c.oid) desc limit 10;
+          select count(*) filter (where closed_at is null) || ' open, ' || count(*) filter (where closed_at is not null) || ' closed postings' from postings;
+          select name || ' available' from pg_available_extensions where name = 'pg_prewarm';
           SQL
