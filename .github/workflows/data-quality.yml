@@ -29,3 +29,13 @@ jobs:
           from postings p join boards b on b.key = p.board_key
           where p.closed_at is null and p.is_nyc = 1 and p.description_text ~* '(\mnull\M\W*){2,}'
           order by p.id desc limit 12"
+          psql "$DATABASE_URL" -c "
+          select p.id, b.ats, left(p.title, 35) as title, left(jf.summary, 110) as summary, left(jf.skills, 60) as skills
+          from postings p join boards b on b.key = p.board_key join job_features jf on jf.posting_id = p.id
+          where p.closed_at is null and p.is_nyc = 1 and jf.summary ~* '\mnull\M'
+          order by b.ats, p.id desc limit 10"
+          psql "$DATABASE_URL" -c "
+          select b.ats, count(*) filter (where jf.skills ~* '\mnull\M') as skills_null, count(*) filter (where jf.company_name ~* '^null$') as company_null,
+                 count(*) filter (where jf.role_title ~* '^null$') as title_null
+          from postings p join boards b on b.key = p.board_key join job_features jf on jf.posting_id = p.id
+          where p.closed_at is null and p.is_nyc = 1 group by 1 order by 1"
