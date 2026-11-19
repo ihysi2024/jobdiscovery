@@ -32,7 +32,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<Par
   try {
     page = (sort === "match" ? await matchJobs(query) : null) ?? (await data().searchJobs({ ...query, sort: sort === "match" ? "new" : sort }));
   } catch (e) {
-    error = e instanceof Error ? e.message : "Couldn't load jobs.";
+    const msg = e instanceof Error ? e.message : "";
+    error = /timeout|canceling statement/i.test(msg)
+      ? "Best match took too long this time, so these are the newest jobs. Try Best match again in a minute."
+      : msg || "Couldn't load jobs.";
     // If ranking fails, still show the newest jobs.
     if (sort === "match") page = await data().searchJobs({ ...query, sort: "new" }).catch(() => null);
   }
