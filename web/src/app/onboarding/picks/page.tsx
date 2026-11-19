@@ -10,7 +10,8 @@ export default async function Page() {
   let deck: Awaited<ReturnType<ReturnType<typeof data>["quickPicks"]>> = [];
   try {
     deck = await data().quickPicks(profile, seed);
-  } catch {
+  } catch (e) {
+    console.error("quick picks failed:", e instanceof Error ? e.message : e);
     deck = [];
   }
   return <OnboardingPicks deck={deck} />;

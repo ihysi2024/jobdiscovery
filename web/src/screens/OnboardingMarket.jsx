@@ -67,8 +67,8 @@ class OnboardingMarket extends React.Component {
     const { rank, added } = this.state;
     const liked = this.props.likedLanes || [];
     const ranked = liked.filter((l) => rank[l] && rank[l] !== "Skip").sort((a, b) => RANKS.indexOf(rank[a]) - RANKS.indexOf(rank[b]));
-    const unranked = liked.filter((l) => !rank[l]);
-    return [...ranked, ...unranked, ...added.filter((l) => !liked.includes(l))];
+    // Only what they ranked or added: a role type they liked once isn't a direction until they say so.
+    return [...ranked, ...added.filter((l) => !liked.includes(l))];
   }
 
   async next() {
@@ -138,7 +138,7 @@ class OnboardingMarket extends React.Component {
             {liked.length ? (
               <>
                 <p style={{ margin: 0, fontSize: "16px", lineHeight: 1.55, color: C.body, maxWidth: "760px" }}>
-                  These are the kinds of work behind the roles you liked. Rank them, or skip any that were a one-off.
+                  These are the kinds of work behind the roles you liked. Rank the ones you want as directions; anything you don't rank is left out.
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "20px" }}>
                   {liked.map((lane) => {

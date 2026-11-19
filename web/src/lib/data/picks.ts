@@ -19,8 +19,8 @@ export interface ProfileForPicks {
 const STOP = new Set(("and the for with you our are your from that this will have has all any can into who what when where " +
   "senior junior lead staff manager associate assistant intern new york nyc team role work job").split(" "));
 
-function tokens(text: string): string[] {
-  return (text.toLowerCase().match(/[a-z][a-z+#.]{1,}/g) || []).map((t) => t.replace(/\.$/, "")).filter((t) => t.length > 2 && !STOP.has(t));
+function tokens(text: unknown): string[] {
+  return (String(text ?? "").toLowerCase().match(/[a-z][a-z+#.]{1,}/g) || []).map((t) => t.replace(/\.$/, "")).filter((t) => t.length > 2 && !STOP.has(t));
 }
 
 /** Small deterministic shuffle so a person sees the same wild cards on reload but people differ. */
@@ -30,12 +30,26 @@ function seeded(seed: string) {
   return () => ((h = Math.imul(h ^ (h >>> 15), 2246822507) ^ Math.imul(h ^ (h >>> 13), 3266489909)) >>> 0) / 4294967296;
 }
 
-export function choosePicks(cands: Candidate[], profile: ProfileForPicks | null, seed: string, close = 4, wild = 3) {
+/** The words from a profile that a matching job would use, weighted (headline and past roles count most). */
+export function profileWords(profile: ProfileForPicks | null): Map<string, number> {
   const want = new Map<string, number>();
-  const add = (text: string | undefined, w: number) => tokens(text || "").forEach((t) => want.set(t, Math.max(want.get(t) || 0, w)));
+  const add = (text: unknown, w: number) => typeof text === "string" && tokens(text).forEach((t) => want.set(t, Math.max(want.get(t) || 0, w)));
   add(profile?.headline, 3);
-  (profile?.exp || []).forEach((e) => add(e.role, 3));
-  (profile?.skills || []).forEach((s) => add(s, 2));
+  (Array.isArray(profile?.exp) ? profile!.exp : []).forEach((e) => add(e && e.role, 3));
+  (Array.isArray(profile?.skills) ? profile!.skills : []).forEach((s) => add(s, 2));
+  return want;
+}
+
+/** The strongest few profile words, to look up matching jobs across the whole board. */
+export function searchTerms(profile: ProfileForPicks | null, max = 12): string[] {
+  return [...profileWords(profile).entries()]
+    .filter(([t]) => /^[a-z]{3,}$/.test(t))
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+    .slice(0, max).map(([t]) => t);
+}
+
+export function choosePicks(cands: Candidate[], profile: ProfileForPicks | null, seed: string, close = 4, wild = 3) {
+  const want = profileWords(profile);
 
   const score = (c: Candidate) => {
     if (!want.size) return 0;

@@ -2,7 +2,7 @@
 // `job_listings` view: open New York City jobs with their classification.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Facet, JobPage, JobQuery, DataSource, JobDetail, JobSummary, PostingSection, WorkMode } from "../types";
-import { cardDetails, choosePicks, type Candidate, type PickCard } from "./picks";
+import { cardDetails, choosePicks, searchTerms, type Candidate, type PickCard } from "./picks";
 
 let client: SupabaseClient | null = null;
 function db(): SupabaseClient {
@@ -261,15 +261,25 @@ export const supabaseSource: DataSource = {
   },
 
   async quickPicks(profile, seed) {
-    const { data, error } = await db()
-      .from("job_listings")
-      .select("id, board_key, company_name, title, workplace_type, first_seen_at, industry, role_family, seniority, work_mode, " +
-              "salary_min_annual, salary_max_annual, interview_process, summary, skills")
-      .not("processed_at", "is", null)
-      .order("first_seen_at", { ascending: false })
-      .limit(1000);
-    if (error) throw new Error("Couldn't load jobs: " + error.message);
-    const rows = (data ?? []) as unknown as Row[];
+    const cols = "id, board_key, company_name, title, workplace_type, first_seen_at, industry, role_family, seniority, work_mode, " +
+                 "salary_min_annual, salary_max_annual, interview_process, summary, skills";
+    // Close matches: jobs anywhere on the board whose title or skills use the resume's words.
+    // Wild cards: the newest jobs.
+    const terms = searchTerms(profile);
+    const [close, recent] = await Promise.all([
+      terms.length
+        ? db().from("job_listings").select(cols).not("processed_at", "is", null)
+            .or(terms.flatMap((t) => [`title.ilike.*${t}*`, `skills.ilike.*${t}*`]).join(","))
+            .order("first_seen_at", { ascending: false }).limit(600)
+        : Promise.resolve({ data: [], error: null }),
+      db().from("job_listings").select(cols).not("processed_at", "is", null)
+        .order("first_seen_at", { ascending: false }).limit(600),
+    ]);
+    if (close.error) throw new Error("Couldn't load jobs: " + close.error.message);
+    if (recent.error) throw new Error("Couldn't load jobs: " + recent.error.message);
+    const seen = new Set<string>();
+    const rows = ([...(close.data ?? []), ...(recent.data ?? [])] as unknown as Row[])
+      .filter((r) => !seen.has(String(r.id)) && seen.add(String(r.id)));
     const cands: Candidate[] = rows.map((r) => {
       const s = toSummary(r);
       return { id: s.id, mono: s.mono, title: s.title, company: s.company, loc: s.loc, lo: s.lo, hi: s.hi,
