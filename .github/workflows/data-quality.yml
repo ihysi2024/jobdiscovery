@@ -39,3 +39,12 @@ jobs:
                  count(*) filter (where jf.role_title ~* '^null$') as title_null
           from postings p join boards b on b.key = p.board_key join job_features jf on jf.posting_id = p.id
           where p.closed_at is null and p.is_nyc = 1 group by 1 order by 1"
+
+      - name: Where Best match spends its time (plan timings only; ids masked)
+        run: |
+          psql "$DATABASE_URL" -At <<'SQL' | sed -E 's/[0-9a-f]{8}-[0-9a-f-]{27}/<user>/g' | grep -E "actual time|Execution Time|Planning Time" | sort -t= -k3 -rn | head -40
+          select set_config('request.jwt.claim.sub', (select user_id::text from profiles where embedding is not null order by updated_at desc limit 1), false);
+          explain (analyze, costs off, buffers off) select * from match_jobs(p_limit => 20);
+          explain (analyze, costs off) select count(*) from jobs_search;
+          explain (analyze, costs off) select * from job_facet_counts();
+          SQL
